@@ -3,6 +3,7 @@ import {
   joinWaitingList,
   leaveWaitingList,
   getMyEntry,
+  getTableEntries,
   seatFromWaitingList,
   removeEntry,
   seatWalkin,
@@ -45,6 +46,21 @@ router.get("/me", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Error interno del servidor." });
   }
 });
+
+router.get(
+  "/tables/:tableId/entries",
+  requireAuth,
+  requireRole("ADMIN", "SUPERVISOR", "OPERADOR"),
+  async (req, res) => {
+    try {
+      const result = await getTableEntries(req.params.tableId);
+      res.json(result);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Error interno del servidor." });
+    }
+  }
+);
 
 // ── Personal del casino (ADMIN/SUPERVISOR/OPERADOR) ──
 

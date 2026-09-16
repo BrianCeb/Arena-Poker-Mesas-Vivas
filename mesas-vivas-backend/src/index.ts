@@ -4,6 +4,7 @@ import cors from "cors";
 import authRouter from "./routes/auth";
 import tablesRouter from "./routes/tables";
 import waitingListRouter from "./routes/waitingList";
+import usersRouter from "./routes/users";
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.get("/health", (_req, res) => {
 app.use("/auth", authRouter);
 app.use("/tables", tablesRouter);
 app.use("/waiting-list", waitingListRouter);
+app.use("/users", usersRouter);
 
 app.listen(port, () => {
   console.log(`Mesas Vivas backend escuchando en http://localhost:${port}`);

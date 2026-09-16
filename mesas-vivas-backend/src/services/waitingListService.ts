@@ -72,6 +72,21 @@ export async function getMyEntry(userId: string) {
   return entry; // null si no tiene ninguna — el frontend lo maneja
 }
 
+export async function getTableEntries(tableId: string) {
+  const entries = await prisma.waitingListEntry.findMany({
+    where: { tableId, status: { in: ["ANOTADO", "SENTADO"] } },
+    include: {
+      user: { select: { id: true, firstName: true, lastName: true, documentNumber: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return {
+    seated: entries.filter((e) => e.status === "SENTADO"),
+    waiting: entries.filter((e) => e.status === "ANOTADO"),
+  };
+}
+
 // ── PERSONAL DEL CASINO ──────────────────────────────────────
 
 export async function seatFromWaitingList(entryId: string, actorId: string) {

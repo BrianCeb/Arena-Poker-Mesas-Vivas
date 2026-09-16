@@ -9,6 +9,16 @@ export function setToken(token: string | null) {
   else localStorage.removeItem("accessToken");
 }
 
+export function setStoredUser(user: any | null) {
+  if (user) localStorage.setItem("user", JSON.stringify(user));
+  else localStorage.removeItem("user");
+}
+
+export function getStoredUser(): any | null {
+  const raw = localStorage.getItem("user");
+  return raw ? JSON.parse(raw) : null;
+}
+
 async function request(path: string, options: RequestInit = {}) {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -38,4 +48,22 @@ export const api = {
   joinTable: (tableId: string) =>
     request(`/waiting-list/tables/${tableId}/join`, { method: "POST" }),
   leaveList: () => request("/waiting-list/leave", { method: "POST" }),
+
+  // ── Admin ──
+  updateTableStatus: (tableId: string, status: string) =>
+    request(`/tables/${tableId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+  getTableEntries: (tableId: string) => request(`/waiting-list/tables/${tableId}/entries`),
+  seatFromWaiting: (entryId: string) =>
+    request(`/waiting-list/${entryId}/seat`, { method: "PATCH" }),
+  removeEntry: (entryId: string) =>
+    request(`/waiting-list/${entryId}`, { method: "DELETE" }),
+  searchUsers: (q: string) => request(`/users/search?q=${encodeURIComponent(q)}`),
+  seatWalkin: (tableId: string, userId: string) =>
+    request(`/waiting-list/tables/${tableId}/seat-walkin`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
 };

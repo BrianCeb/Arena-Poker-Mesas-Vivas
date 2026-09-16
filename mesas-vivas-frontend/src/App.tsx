@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, setToken } from "./api";
+import { api, setToken, setStoredUser, getStoredUser } from "./api";
+import AdminPanel from "./AdminPanel";
 
 interface Table {
   id: string;
@@ -29,6 +30,8 @@ function tableStatusInfo(t: Table) {
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem("accessToken"));
+  const [currentUser, setCurrentUser] = useState<any>(getStoredUser());
+  const [view, setView] = useState<"jugador" | "admin">("jugador");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -72,6 +75,8 @@ export default function App() {
     try {
       const result = await api.login(email, password);
       setToken(result.accessToken);
+      setStoredUser(result.user);
+      setCurrentUser(result.user);
       setLoggedIn(true);
     } catch (err: any) {
       setLoginError(err.message);
@@ -80,6 +85,8 @@ export default function App() {
 
   function handleLogout() {
     setToken(null);
+    setStoredUser(null);
+    setCurrentUser(null);
     setLoggedIn(false);
     setTables([]);
     setMyEntry(null);
@@ -134,6 +141,8 @@ export default function App() {
     );
   }
 
+  const isStaff = currentUser?.roles?.length > 0;
+
   return (
     <>
       <header>
@@ -141,10 +150,31 @@ export default function App() {
           <img className="brand-logo" src="/arena-poker-logo.png" alt="Arena Poker" />
           <span className="brand-sub">Mesas Vivas</span>
         </div>
-        <button className="logout-btn" onClick={handleLogout}>Cerrar sesión</button>
+        <div className="header-right">
+          {isStaff && (
+            <div className="view-switch">
+              <button
+                className={view === "jugador" ? "active" : ""}
+                onClick={() => setView("jugador")}
+              >
+                Jugador
+              </button>
+              <button
+                className={view === "admin" ? "active" : ""}
+                onClick={() => setView("admin")}
+              >
+                Panel Admin
+              </button>
+            </div>
+          )}
+          <button className="logout-btn" onClick={handleLogout}>Cerrar sesión</button>
+        </div>
       </header>
 
-      <main>
+      {isStaff && view === "admin" ? (
+        <AdminPanel />
+      ) : (
+        <main>
         <div className="section-title">Tu inscripción</div>
         {myEntry ? (
           <div className="my-entry">
@@ -198,7 +228,8 @@ export default function App() {
             </div>
           );
         })}
-      </main>
+        </main>
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </>
