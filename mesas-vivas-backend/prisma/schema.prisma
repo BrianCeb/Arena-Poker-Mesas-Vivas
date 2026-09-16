@@ -1,0 +1,284 @@
+// ─────────────────────────────────────────────────────────────
+// Mesas Vivas — Schema de base de datos
+// Traducción directa del modelo acordado en el diseño previo.
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── ENUMS ──────────────────────────────────────────────────────
+
+enum DocumentType {
+  DNI
+  LC
+  LE
+  PASAPORTE
+}
+
+enum UserStatus {
+  PENDIENTE
+  ACTIVA
+  BLOQUEADA
+  DESHABILITADA
+}
+
+enum TableStatus {
+  CERRADA
+  ABIERTA
+  SUSPENDIDA
+}
+
+enum StradleMode {
+  NO
+  OPCIONAL
+  OBLIGATORIO
+}
+
+enum WaitingListOrigin {
+  APP
+  MANUAL_STAFF
+}
+
+enum WaitingListStatus {
+  ANOTADO
+  SENTADO
+  RETIRADO
+  CANCELADO_ADMIN
+}
+
+// ── USUARIOS Y AUTENTICACIÓN ─────────────────────────────────
+
+model User {
+  id                  String    @id @default(uuid())
+  documentType        DocumentType @map("document_type")
+  documentNumber      String    @map("document_number")
+  firstName           String    @map("first_name")
+  lastName            String    @map("last_name")
+  sex                 String
+  email               String    @unique
+  emailVerifiedAt     DateTime? @map("email_verified_at")
+  phone               String?
+  nickname            String?
+  passwordHash        String    @map("password_hash")
+  birthDate           DateTime  @map("birth_date")
+  status              UserStatus @default(PENDIENTE)
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  roles                UserRole[]
+  waitingListEntries   WaitingListEntry[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens  PasswordResetToken[]
+  refreshTokens        RefreshToken[]
+  termsAcceptances     UserTermsAcceptance[]
+  auditLogsAsActor     AuditLog[] @relation("AuditActor")
+  tablesCreated        CasinoTable[] @relation("TableCreatedBy")
+  statusChangesActor   TableStatusHistory[] @relation("StatusChangedBy")
+  entriesCancelledAsAdmin WaitingListEntry[] @relation("EntryCancelledBy")
+  rolesAssignedByMe    UserRole[] @relation("RoleAssignedBy")
+
+  @@unique([documentType, documentNumber])
+  @@index([email])
+  @@index([documentNumber])
+  @@index([status])
+  @@map("users")
+}
+
+model Role {
+  id          String @id @default(uuid())
+  name        String @unique // OPERADOR, SUPERVISOR, ADMIN
+  description String?
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  roleId     String    @map("role_id")
+  assignedBy String?   @map("assigned_by")
+  assignedAt DateTime  @default(now()) @map("assigned_at")
+
+  user           User  @relation(fields: [userId], references: [id])
+  role           Role  @relation(fields: [roleId], references: [id])
+  assignedByUser User? @relation("RoleAssignedBy", fields: [assignedBy], references: [id])
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  ip        String?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ── MESAS ──────────────────────────────────────────────────────
+
+model CasinoTable {
+  id                 String      @id @default(uuid())
+  name               String
+  gameType           String      @map("game_type")
+  smallBlind         Decimal     @map("small_blind")
+  bigBlind           Decimal     @map("big_blind")
+  minBuyIn           Decimal?    @map("min_buy_in")
+  maxBuyIn            Decimal?    @map("max_buy_in")
+  capacity           Int         @default(9)
+  minPlayersToStart  Int         @default(4) @map("min_players_to_start")
+  stradleMode        StradleMode @default(NO) @map("stradle_mode")
+  stradleAmount      Decimal?    @map("stradle_amount")
+  status             TableStatus @default(CERRADA)
+  openedAt           DateTime?   @map("opened_at")
+  closedAt           DateTime?   @map("closed_at")
+  notes              String?
+  createdBy          String      @map("created_by")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+  deletedAt          DateTime?   @map("deleted_at")
+
+  creator            User @relation("TableCreatedBy", fields: [createdBy], references: [id])
+  waitingListEntries WaitingListEntry[]
+  statusHistory      TableStatusHistory[]
+
+  @@index([status])
+  @@map("casino_tables")
+}
+
+model TableStatusHistory {
+  id             String      @id @default(uuid())
+  tableId        String      @map("table_id")
+  previousStatus TableStatus @map("previous_status")
+  newStatus      TableStatus @map("new_status")
+  changedBy      String      @map("changed_by")
+  changedAt      DateTime    @default(now()) @map("changed_at")
+  reason         String?
+
+  table       CasinoTable @relation(fields: [tableId], references: [id])
+  changedByUser User      @relation("StatusChangedBy", fields: [changedBy], references: [id])
+
+  @@index([tableId])
+  @@map("table_status_history")
+}
+
+// ── LISTA DE ESPERA ───────────────────────────────────────────
+// NOTA: la restricción "un usuario no puede tener más de una
+// inscripción activa (ANOTADO o SENTADO) a la vez" NO se puede
+// expresar como @@unique condicional en Prisma. Se agrega como
+// índice único parcial en una migración SQL manual (Fase 1).
+
+model WaitingListEntry {
+  id            String            @id @default(uuid())
+  userId        String            @map("user_id")
+  tableId       String            @map("table_id")
+  status        WaitingListStatus @default(ANOTADO)
+  origin        WaitingListOrigin @default(APP)
+  createdAt     DateTime          @default(now()) @map("created_at")
+  seatedAt      DateTime?         @map("seated_at")
+  leftAt        DateTime?         @map("left_at")
+  cancelledBy   String?           @map("cancelled_by")
+  cancelReason  String?           @map("cancel_reason")
+
+  user           User        @relation(fields: [userId], references: [id])
+  table          CasinoTable @relation(fields: [tableId], references: [id])
+  cancelledByUser User?      @relation("EntryCancelledBy", fields: [cancelledBy], references: [id])
+
+  @@index([tableId, status])
+  @@index([userId, status])
+  @@map("waiting_list_entries")
+}
+
+// ── AUDITORÍA ──────────────────────────────────────────────────
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorId       String?  @map("actor_id")
+  action        String
+  entityType    String   @map("entity_type")
+  entityId      String   @map("entity_id")
+  previousState Json?    @map("previous_state")
+  newState      Json?    @map("new_state")
+  ipAddress     String?  @map("ip_address")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+// ── TÉRMINOS Y CONDICIONES ──────────────────────────────────────
+
+model TermsVersion {
+  id           String   @id @default(uuid())
+  versionLabel String   @map("version_label")
+  content      String
+  publishedAt  DateTime @default(now()) @map("published_at")
+  isCurrent    Boolean  @default(false) @map("is_current")
+
+  acceptances UserTermsAcceptance[]
+
+  @@map("terms_versions")
+}
+
+model UserTermsAcceptance {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  termsVersionId String   @map("terms_version_id")
+  acceptedAt     DateTime @default(now()) @map("accepted_at")
+  ipAddress      String?  @map("ip_address")
+
+  user         User         @relation(fields: [userId], references: [id])
+  termsVersion TermsVersion @relation(fields: [termsVersionId], references: [id])
+
+  @@unique([userId, termsVersionId])
+  @@map("user_terms_acceptance")
+}
