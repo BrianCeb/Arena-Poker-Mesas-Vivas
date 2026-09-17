@@ -34,6 +34,11 @@ export async function sendVerificationEmail(
     // quedó creado en PENDIENTE, y va a poder pedir un reenvío del email
     // más adelante (Fase 2, endpoint de reenvío — todavía no implementado).
     console.error("Error enviando email de verificación:", error);
+    // Solo para desarrollo: si Resend no pudo entregar el email (por ejemplo,
+    // por la restricción de modo de prueba que solo permite mandar a la
+    // cuenta dueña de la API key), dejamos el link acá para poder probar el
+    // flujo de activación igual, copiándolo a mano.
+    console.log(`[DEV] Link de verificación (no se pudo enviar por email): ${verificationUrl}`);
     throw new Error("No se pudo enviar el email de verificación.");
   }
 }
@@ -69,6 +74,7 @@ export async function sendPasswordResetEmail(
 
   if (error) {
     console.error("Error enviando email de reset:", error);
+    console.log(`[DEV] Link de recuperación (no se pudo enviar por email): ${resetUrl}`);
     throw new Error("No se pudo enviar el email de recuperación.");
   }
 }

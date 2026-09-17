@@ -52,6 +52,13 @@ enum WaitingListStatus {
   CANCELADO_ADMIN
 }
 
+enum TournamentStatus {
+  PROGRAMADO
+  EN_CURSO
+  FINALIZADO
+  CANCELADO
+}
+
 // ── USUARIOS Y AUTENTICACIÓN ─────────────────────────────────
 
 model User {
@@ -84,6 +91,7 @@ model User {
   statusChangesActor   TableStatusHistory[] @relation("StatusChangedBy")
   entriesCancelledAsAdmin WaitingListEntry[] @relation("EntryCancelledBy")
   rolesAssignedByMe    UserRole[] @relation("RoleAssignedBy")
+  tournamentsCreated   Tournament[] @relation("TournamentCreatedBy")
 
   @@unique([documentType, documentNumber])
   @@index([email])
@@ -233,6 +241,47 @@ model WaitingListEntry {
   @@index([tableId, status])
   @@index([userId, status])
   @@map("waiting_list_entries")
+}
+
+// ── TORNEOS ────────────────────────────────────────────────────
+// Sección informativa (no hay inscripción dentro de la app en esta
+// primera versión). El admin carga fecha, condiciones y sube dos
+// imágenes (flyer + estructura de ciegas). El estado PROGRAMADO/
+// EN_CURSO se calcula en el frontend a partir de las fechas; el
+// admin puede forzar CANCELADO o FINALIZADO manualmente.
+
+model Tournament {
+  id                    String            @id @default(uuid())
+  name                  String
+  type                  String            // texto libre: Freezeout, Bounty, Sit & Go, High Roller, etc.
+  startsAt              DateTime          @map("starts_at")
+  registrationClosesAt  DateTime          @map("registration_closes_at")
+  buyIn                 Decimal           @map("buy_in")
+  rake                  Decimal
+  initialStack          Int?              @map("initial_stack")
+  blindsIntervalMinutes Int?              @map("blinds_interval_minutes")
+  reEntryEnabled         Boolean           @default(false) @map("re_entry_enabled")
+  reEntryClosesAt        DateTime?         @map("re_entry_closes_at")
+  addOnEnabled           Boolean           @default(false) @map("add_on_enabled")
+  addOnPrice             Decimal?          @map("add_on_price")
+  addOnRake              Decimal?          @map("add_on_rake")
+  addOnChips             Int?              @map("add_on_chips")
+  addOnLevel             Int?              @map("add_on_level")
+  guaranteedPot          Decimal?          @map("guaranteed_pot")
+  flyerImageUrl          String?           @map("flyer_image_url")
+  structureImageUrl      String?           @map("structure_image_url")
+  notes                  String?
+  status                 TournamentStatus  @default(PROGRAMADO)
+  createdBy              String            @map("created_by")
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+  deletedAt               DateTime?         @map("deleted_at")
+
+  creator User @relation("TournamentCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([status])
+  @@index([startsAt])
+  @@map("tournaments")
 }
 
 // ── AUDITORÍA ──────────────────────────────────────────────────
