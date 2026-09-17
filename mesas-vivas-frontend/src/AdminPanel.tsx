@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "./api";
+import { socket } from "./socket";
 
 interface Table {
   id: string;
@@ -72,9 +73,17 @@ export default function AdminPanel() {
 
   useEffect(() => {
     loadTables();
-    const interval = setInterval(loadTables, 5000);
-    return () => clearInterval(interval);
-  }, [loadTables]);
+    // Tiempo real: cuando cambia algo (en cualquier mesa), refrescamos
+    // tanto el resumen de mesas como el detalle de la que está seleccionada.
+    const handleChange = () => {
+      loadTables();
+      if (selectedId) loadEntries(selectedId);
+    };
+    socket.on("tables:changed", handleChange);
+    return () => {
+      socket.off("tables:changed", handleChange);
+    };
+  }, [loadTables, selectedId, loadEntries]);
 
   useEffect(() => {
     if (selectedId) {

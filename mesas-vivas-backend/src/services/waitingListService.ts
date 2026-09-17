@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma";
 import { AppError } from "../lib/errors";
+import { broadcastTablesChanged } from "../lib/realtime";
 
 // ── JUGADOR ───────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ export async function joinWaitingList(tableId: string, userId: string) {
     const entry = await prisma.waitingListEntry.create({
       data: { userId, tableId, status: "ANOTADO", origin: "APP" },
     });
+    broadcastTablesChanged();
     return entry;
   } catch (err: any) {
     if (err.code === "P2002") {
@@ -61,6 +63,7 @@ export async function leaveWaitingList(userId: string) {
     data: { status: "RETIRADO", leftAt: new Date() },
   });
 
+  broadcastTablesChanged();
   return { message: "Te retiraste de la lista." };
 }
 
@@ -121,6 +124,7 @@ export async function seatFromWaitingList(entryId: string, actorId: string) {
     }),
   ]);
 
+  broadcastTablesChanged();
   return { message: "Jugador sentado correctamente." };
 }
 
@@ -152,6 +156,7 @@ export async function removeEntry(entryId: string, actorId: string, reason?: str
     }),
   ]);
 
+  broadcastTablesChanged();
   return { message: "Inscripción removida." };
 }
 
@@ -201,6 +206,7 @@ export async function seatWalkin(tableId: string, targetUserId: string, actorId:
       },
     });
 
+    broadcastTablesChanged();
     return entry;
   } catch (err: any) {
     if (err.code === "P2002") {

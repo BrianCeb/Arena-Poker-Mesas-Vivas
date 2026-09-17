@@ -1,6 +1,7 @@
 import { TableStatus } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { AppError } from "../lib/errors";
+import { broadcastTablesChanged } from "../lib/realtime";
 
 export async function listTables() {
   const tables = await prisma.casinoTable.findMany({
@@ -76,6 +77,7 @@ export async function updateTableStatus(
     }),
   ]);
 
+  broadcastTablesChanged();
   return { message: `Mesa actualizada a ${newStatus}.` };
 }
 
@@ -143,6 +145,7 @@ export async function createTable(input: CreateTableInput, actorId: string) {
     },
   });
 
+  broadcastTablesChanged();
   return table;
 }
 
@@ -178,6 +181,7 @@ export async function deleteTable(tableId: string, actorId: string) {
     }),
   ]);
 
+  broadcastTablesChanged();
   return { message: `${table.name} dada de baja.` };
 }
 
@@ -277,5 +281,6 @@ export async function updateTable(tableId: string, input: UpdateTableInput, acto
     },
   });
 
+  broadcastTablesChanged();
   return updated;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, setToken, setStoredUser, getStoredUser } from "./api";
+import { socket } from "./socket";
 import AdminPanel from "./AdminPanel";
 
 interface Table {
@@ -63,10 +64,14 @@ export default function App() {
   useEffect(() => {
     if (!loggedIn) return;
     loadData();
-    // Sin tiempo real todavía (eso es Fase 5) — por ahora refrescamos
-    // cada 4 segundos así se ve el cambio si otro usuario se anota.
-    const interval = setInterval(loadData, 4000);
-    return () => clearInterval(interval);
+    const handleChange = () => {
+      console.log("[socket] tables:changed recibido, refrescando...");
+      loadData();
+    };
+    socket.on("tables:changed", handleChange);
+    return () => {
+      socket.off("tables:changed", handleChange);
+    };
   }, [loggedIn, loadData]);
 
   async function handleLogin(e: React.FormEvent) {

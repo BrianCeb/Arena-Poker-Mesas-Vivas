@@ -27,7 +27,7 @@ async function request(path: string, options: RequestInit = {}) {
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers, cache: "no-store" });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
 
