@@ -1,5 +1,4 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 import {
   registerUser,
   verifyEmail,
@@ -12,19 +11,9 @@ import {
   RegisterError,
 } from "../services/authService";
 import { requireAuth } from "../middleware/auth";
+import { authLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
-
-// Protege register/login contra intentos automatizados: 10 intentos cada
-// 15 minutos por IP. No aplica a refresh/logout porque esos requieren
-// tener ya un token válido, que un atacante sin credenciales no tiene.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: "Demasiados intentos. Probá de nuevo en unos minutos." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 router.post("/register", authLimiter, async (req, res) => {
   try {
@@ -188,7 +177,10 @@ router.post("/reset-password", async (req, res) => {
 
 // Cambio de contraseña estando logueado (distinto del reset por email:
 // acá el usuario ya está autenticado y confirma con su contraseña actual).
-router.post("/change-password", requireAuth, async (req, res) => {
+// Lleva el mismo limiter que login: aunque haga falta estar autenticado,
+// frena a alguien que consiguió un token y prueba contraseñas actuales
+// a fuerza bruta para adivinarla.
+router.post("/change-password", authLimiter, requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword, confirmNewPassword } = req.body;
     const result = await changePassword(

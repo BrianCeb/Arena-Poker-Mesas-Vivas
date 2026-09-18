@@ -60,6 +60,11 @@ export default function App() {
 
   const [showProfile, setShowProfile] = useState(false);
 
+  function handleGoHome() {
+    setShowProfile(false);
+    setPublicTab("mesas");
+  }
+
   const loadTables = useCallback(async () => {
     try {
       const data = await api.getTables();
@@ -182,7 +187,7 @@ export default function App() {
     return (
       <>
         <header>
-          <div className="brand">
+          <div className="brand" onClick={handleGoHome}>
             <img className="brand-logo" src="/arena-poker-logo.png" alt="Arena Poker" />
             <span className="brand-sub">Panel Admin</span>
           </div>
@@ -267,7 +272,7 @@ export default function App() {
   return (
     <>
       <header>
-        <div className="brand">
+        <div className="brand" onClick={handleGoHome}>
           <img className="brand-logo" src="/arena-poker-logo.png" alt="Arena Poker" />
           <span className="brand-sub"></span>
         </div>

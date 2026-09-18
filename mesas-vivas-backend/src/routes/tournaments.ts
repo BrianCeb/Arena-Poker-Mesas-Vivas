@@ -11,12 +11,13 @@ import {
 } from "../services/tournamentService";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { uploadTournamentImages } from "../middleware/upload";
+import { readLimiter } from "../middleware/rateLimiter";
 import { AppError } from "../lib/errors";
 
 const router = Router();
 
 // Pública — calendario de torneos, no requiere login.
-router.get("/", async (_req, res) => {
+router.get("/", readLimiter, async (_req, res) => {
   try {
     const tournaments = await listTournaments();
     res.json(tournaments);
@@ -38,7 +39,7 @@ router.get("/admin", requireAuth, requireRole("ADMIN", "SUPERVISOR"), async (_re
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", readLimiter, async (req, res) => {
   try {
     const tournament = await getTournament(req.params.id);
     res.json(tournament);

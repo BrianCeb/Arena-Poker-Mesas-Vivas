@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { listTables, updateTableStatus, createTable, deleteTable, updateTable } from "../services/tableService";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { readLimiter } from "../middleware/rateLimiter";
 import { AppError } from "../lib/errors";
 
 const router = Router();
@@ -8,7 +9,7 @@ const router = Router();
 // Pública: cualquiera puede ver las mesas y su ocupación (la sección de
 // torneos también es pública, es consistente con eso). Anotarse a una
 // lista sí va a requerir login — eso es Fase 4.
-router.get("/", async (_req, res) => {
+router.get("/", readLimiter, async (_req, res) => {
   try {
     const tables = await listTables();
     res.json(tables);

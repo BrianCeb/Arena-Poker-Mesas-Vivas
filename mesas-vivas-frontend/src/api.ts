@@ -154,6 +154,13 @@ export interface ChangePasswordInput {
   confirmNewPassword: string;
 }
 
+export interface GuestInput {
+  documentType: string;
+  documentNumber: string;
+  firstName: string;
+  lastName: string;
+}
+
 export interface AuditLogFilters {
   entityType?: string;
   action?: string;
@@ -161,6 +168,35 @@ export interface AuditLogFilters {
   to?: string;
   page?: number;
   pageSize?: number;
+}
+
+export interface AdminUser {
+  id: string;
+  documentType: string;
+  documentNumber: string;
+  firstName: string;
+  lastName: string;
+  sex: string;
+  email: string;
+  emailVerifiedAt: string | null;
+  phone: string | null;
+  nickname: string | null;
+  birthDate: string;
+  status: "PENDIENTE" | "ACTIVA" | "BLOQUEADA" | "DESHABILITADA";
+  failedLoginAttempts: number;
+  lockedUntil: string | null;
+  createdAt: string;
+}
+
+export interface AdminUserHistoryEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  previousState: any;
+  newState: any;
+  createdAt: string;
+  actor: { firstName: string; lastName: string } | null;
 }
 
 export const api = {
@@ -234,6 +270,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userId }),
     }),
+  seatWalkinGuest: (tableId: string, guest: GuestInput) =>
+    request(`/waiting-list/tables/${tableId}/seat-walkin-guest`, {
+      method: "POST",
+      body: JSON.stringify(guest),
+    }),
 
   // ── Admin: torneos ──
   getTournamentsAdmin: () => request("/tournaments/admin"),
@@ -261,4 +302,15 @@ export const api = {
     const query = qs.toString();
     return request(`/audit-logs${query ? `?${query}` : ""}`);
   },
+
+  // ── Admin: gestión de usuarios ──
+  searchUsersAdmin: (q: string): Promise<AdminUser[]> =>
+    request(`/users/admin?q=${encodeURIComponent(q)}`),
+  getUserAdmin: (id: string): Promise<{ user: AdminUser; history: AdminUserHistoryEntry[] }> =>
+    request(`/users/admin/${id}`),
+  updateUserStatus: (id: string, status: string): Promise<AdminUser> =>
+    request(`/users/admin/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
 };

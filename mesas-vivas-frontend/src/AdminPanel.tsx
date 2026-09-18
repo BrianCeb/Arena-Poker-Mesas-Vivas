@@ -3,6 +3,8 @@ import { api, TableInput } from "./api";
 import { socket } from "./socket";
 import AdminTournaments from "./AdminTournaments";
 import AdminAuditLog from "./AdminAuditLog";
+import AdminUsers from "./AdminUsers";
+import TableForm from "./TableForm";
 
 interface Table {
   id: string;
@@ -22,19 +24,22 @@ interface Table {
   waiting: number;
 }
 
-interface EntryUser {
+interface Entry {
   id: string;
+  userId: string | null;
   firstName: string;
   lastName: string;
   documentNumber: string;
-}
-
-interface Entry {
-  id: string;
-  user: EntryUser;
   origin: "APP" | "MANUAL_STAFF";
   createdAt: string;
 }
+
+const EMPTY_GUEST_FORM = {
+  documentType: "DNI",
+  documentNumber: "",
+  firstName: "",
+  lastName: "",
+};
 
 interface SearchResult {
   id: string;
@@ -65,185 +70,8 @@ const EMPTY_FORM: TableInput = {
   notes: "",
 };
 
-function TableForm({
-  mode,
-  initial,
-  onCancel,
-  onSaved,
-  showToast,
-}: {
-  mode: "create" | "edit";
-  initial: TableInput & { id?: string };
-  onCancel: () => void;
-  onSaved: () => void;
-  showToast: (msg: string) => void;
-}) {
-  const [form, setForm] = useState<TableInput>(initial);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function set<K extends keyof TableInput>(key: K, value: TableInput[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-
-    if (mode === "create" && (!form.name || !form.gameType || form.smallBlind == null || form.bigBlind == null)) {
-      setError("Nombre, tipo de juego y ciegas son obligatorios.");
-      return;
-    }
-    if (form.stradleMode !== "NO" && !form.stradleAmount) {
-      setError("Si el stradle es opcional u obligatorio, hace falta indicar el monto.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      if (mode === "create") {
-        await api.createTable(form);
-        showToast(`Mesa "${form.name}" creada.`);
-      } else {
-        const { name, ...editableFields } = form;
-        await api.updateTable(initial.id!, editableFields);
-        showToast(`Mesa "${initial.name}" actualizada.`);
-      }
-      onSaved();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form className="admin-table-form" onSubmit={handleSubmit}>
-      <div className="admin-section-title">{mode === "create" ? "Nueva mesa" : `Editar ${initial.name}`}</div>
-      {error && <div className="admin-form-error">{error}</div>}
-
-      <div className="form-row">
-        <label>
-          Nombre
-          <input
-            value={form.name || ""}
-            onChange={(e) => set("name", e.target.value)}
-            disabled={mode === "edit"}
-            placeholder="Mesa 5"
-          />
-        </label>
-        <label>
-          Tipo de juego
-          <input
-            value={form.gameType || ""}
-            onChange={(e) => set("gameType", e.target.value)}
-            placeholder="Texas Hold'em"
-          />
-        </label>
-      </div>
-
-      <div className="form-row">
-        <label>
-          Ciega chica
-          <input
-            type="number"
-            value={form.smallBlind ?? ""}
-            onChange={(e) => set("smallBlind", e.target.value === "" ? undefined : Number(e.target.value))}
-          />
-        </label>
-        <label>
-          Ciega grande
-          <input
-            type="number"
-            value={form.bigBlind ?? ""}
-            onChange={(e) => set("bigBlind", e.target.value === "" ? undefined : Number(e.target.value))}
-          />
-        </label>
-      </div>
-
-      <div className="form-row">
-        <label>
-          Buy-in mínimo (opcional)
-          <input
-            type="number"
-            value={form.minBuyIn ?? ""}
-            onChange={(e) => set("minBuyIn", e.target.value === "" ? undefined : Number(e.target.value))}
-          />
-        </label>
-        <label>
-          Buy-in máximo (opcional)
-          <input
-            type="number"
-            value={form.maxBuyIn ?? ""}
-            onChange={(e) => set("maxBuyIn", e.target.value === "" ? undefined : Number(e.target.value))}
-          />
-        </label>
-      </div>
-
-      <div className="form-row">
-        <label>
-          Capacidad
-          <input
-            type="number"
-            value={form.capacity ?? ""}
-            onChange={(e) => set("capacity", e.target.value === "" ? undefined : Number(e.target.value))}
-          />
-        </label>
-        <label>
-          Mínimo para arrancar
-          <input
-            type="number"
-            value={form.minPlayersToStart ?? ""}
-            onChange={(e) => set("minPlayersToStart", e.target.value === "" ? undefined : Number(e.target.value))}
-          />
-        </label>
-      </div>
-
-      <div className="form-row">
-        <label>
-          Stradle
-          <select value={form.stradleMode} onChange={(e) => set("stradleMode", e.target.value)}>
-            <option value="NO">No</option>
-            <option value="OPCIONAL">Opcional</option>
-            <option value="OBLIGATORIO">Obligatorio</option>
-          </select>
-        </label>
-        {form.stradleMode !== "NO" && (
-          <label>
-            Monto del stradle
-            <input
-              type="number"
-              value={form.stradleAmount ?? ""}
-              onChange={(e) => set("stradleAmount", e.target.value === "" ? undefined : Number(e.target.value))}
-            />
-          </label>
-        )}
-      </div>
-
-      {mode === "edit" && (
-        <label className="admin-form-full">
-          Observaciones
-          <input
-            value={form.notes || ""}
-            onChange={(e) => set("notes", e.target.value)}
-          />
-        </label>
-      )}
-
-      <div className="admin-form-actions">
-        <button type="submit" className="admin-action-btn accent" disabled={saving}>
-          {saving ? "Guardando..." : mode === "create" ? "Crear mesa" : "Guardar cambios"}
-        </button>
-        <button type="button" className="admin-action-btn" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </button>
-      </div>
-    </form>
-  );
-}
-
 export default function AdminPanel() {
-  const [adminSection, setAdminSection] = useState<"mesas" | "torneos" | "auditoria">("mesas");
+  const [adminSection, setAdminSection] = useState<"mesas" | "torneos" | "auditoria" | "usuarios">("mesas");
 
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -254,6 +82,9 @@ export default function AdminPanel() {
   const [rowTableChoice, setRowTableChoice] = useState<Record<string, string>>({});
   const [toast, setToast] = useState("");
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
+  const [guestForm, setGuestForm] = useState(EMPTY_GUEST_FORM);
+  const [guestTableChoice, setGuestTableChoice] = useState("");
+  const [guestSaving, setGuestSaving] = useState(false);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -337,7 +168,7 @@ export default function AdminPanel() {
   async function handleSeat(entry: Entry) {
     try {
       const result = await api.seatFromWaiting(entry.id);
-      showToast(`${entry.user.firstName} ${entry.user.lastName} sentado.`);
+      showToast(`${entry.firstName} ${entry.lastName} sentado.`);
       if (result?.warning) window.alert(result.warning);
       refreshAll();
     } catch (err: any) {
@@ -348,7 +179,7 @@ export default function AdminPanel() {
   async function handleRemove(entry: Entry) {
     try {
       await api.removeEntry(entry.id);
-      showToast(`${entry.user.firstName} ${entry.user.lastName} removido.`);
+      showToast(`${entry.firstName} ${entry.lastName} removido.`);
       refreshAll();
     } catch (err: any) {
       showToast(err.message);
@@ -360,7 +191,7 @@ export default function AdminPanel() {
   // aproximado, para dejarlo registrado en cashOutAmount/cashOutAt.
   async function handleRemoveSeated(entry: Entry) {
     const withChips = window.confirm(
-      `¿${entry.user.firstName} ${entry.user.lastName} se retira con fichas?`
+      `¿${entry.firstName} ${entry.lastName} se retira con fichas?`
     );
 
     let cashOutAmount: number | undefined;
@@ -377,7 +208,7 @@ export default function AdminPanel() {
 
     try {
       await api.removeEntry(entry.id, undefined, cashOutAmount);
-      showToast(`${entry.user.firstName} ${entry.user.lastName} removido.`);
+      showToast(`${entry.firstName} ${entry.lastName} removido.`);
       refreshAll();
     } catch (err: any) {
       showToast(err.message);
@@ -395,6 +226,38 @@ export default function AdminPanel() {
       refreshAll();
     } catch (err: any) {
       showToast(err.message);
+    }
+  }
+
+  function setGuestField(key: keyof typeof EMPTY_GUEST_FORM, value: string) {
+    setGuestForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleSeatGuest() {
+    const tableId = guestTableChoice || selectedId || tables[0]?.id || "";
+    if (!tableId) {
+      showToast("No hay ninguna mesa disponible.");
+      return;
+    }
+    if (!guestForm.documentNumber.trim() || !guestForm.firstName.trim() || !guestForm.lastName.trim()) {
+      showToast("Completá documento, nombre y apellido.");
+      return;
+    }
+    setGuestSaving(true);
+    try {
+      const result = await api.seatWalkinGuest(tableId, guestForm);
+      const targetTable = tables.find((t) => t.id === tableId);
+      showToast(`${guestForm.firstName} ${guestForm.lastName} sentado en ${targetTable?.name} (invitado, sin cuenta).`);
+      if (result?.warning) window.alert(result.warning);
+      setGuestForm(EMPTY_GUEST_FORM);
+      setGuestTableChoice("");
+      setSearchQuery("");
+      setSearchResults([]);
+      refreshAll();
+    } catch (err: any) {
+      showToast(err.message);
+    } finally {
+      setGuestSaving(false);
     }
   }
 
@@ -416,6 +279,12 @@ export default function AdminPanel() {
           Torneos
         </button>
         <button
+          className={adminSection === "usuarios" ? "active" : ""}
+          onClick={() => setAdminSection("usuarios")}
+        >
+          Usuarios
+        </button>
+        <button
           className={adminSection === "auditoria" ? "active" : ""}
           onClick={() => setAdminSection("auditoria")}
         >
@@ -423,12 +292,16 @@ export default function AdminPanel() {
         </button>
       </div>
 
+      {toast && <div className="toast">{toast}</div>}
+
       {adminSection === "torneos" ? (
         <AdminTournaments />
+      ) : adminSection === "usuarios" ? (
+        <AdminUsers showToast={showToast} />
       ) : adminSection === "auditoria" ? (
         <AdminAuditLog />
       ) : (
-        <div className="admin-panel">
+        <div className="admin-panel admin-panel-mesas">
           <div className="admin-tables-list">
             <button
               className="admin-action-btn accent admin-new-table-btn"
@@ -519,9 +392,10 @@ export default function AdminPanel() {
               {seated.map((e) => (
                 <div className="admin-entry-row" key={e.id}>
                   <div>
-                    <div className="admin-entry-name">{e.user.firstName} {e.user.lastName}</div>
+                    <div className="admin-entry-name">{e.firstName} {e.lastName}</div>
                     <div className="admin-entry-sub">
-                      DNI {e.user.documentNumber} · {e.origin === "MANUAL_STAFF" ? "presente, sin lista" : "vía app"}
+                      DNI {e.documentNumber} ·{" "}
+                      {!e.userId ? "invitado, sin cuenta" : e.origin === "MANUAL_STAFF" ? "presente, sin lista" : "vía app"}
                     </div>
                   </div>
                   <button className="admin-action-btn danger" onClick={() => handleRemoveSeated(e)}>Retirar</button>
@@ -533,8 +407,8 @@ export default function AdminPanel() {
               {waiting.map((e) => (
                 <div className="admin-entry-row" key={e.id}>
                   <div>
-                    <div className="admin-entry-name">{e.user.firstName} {e.user.lastName}</div>
-                    <div className="admin-entry-sub">DNI {e.user.documentNumber}</div>
+                    <div className="admin-entry-name">{e.firstName} {e.lastName}</div>
+                    <div className="admin-entry-sub">DNI {e.documentNumber}</div>
                   </div>
                   <div className="admin-entry-actions">
                     <button className="admin-action-btn accent" onClick={() => handleSeat(e)}>Sentar</button>
@@ -581,10 +455,70 @@ export default function AdminPanel() {
                   </div>
                 );
               })}
+
+              {searchQuery.trim().length >= 2 && searchResults.length === 0 && (
+                <div className="admin-guest-form">
+                  <div className="admin-empty">No se encontró ninguna cuenta con ese nombre o DNI.</div>
+                  <div className="admin-section-title" style={{ marginTop: 4 }}>Cargar como invitado (sin cuenta)</div>
+                  <div className="form-row">
+                    <label>
+                      Tipo de documento
+                      <select
+                        value={guestForm.documentType}
+                        onChange={(e) => setGuestField("documentType", e.target.value)}
+                      >
+                        <option value="DNI">DNI</option>
+                        <option value="LC">LC</option>
+                        <option value="LE">LE</option>
+                        <option value="PASAPORTE">Pasaporte</option>
+                      </select>
+                    </label>
+                    <label>
+                      Número de documento
+                      <input
+                        value={guestForm.documentNumber}
+                        onChange={(e) => setGuestField("documentNumber", e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <div className="form-row">
+                    <label>
+                      Nombre
+                      <input
+                        value={guestForm.firstName}
+                        onChange={(e) => setGuestField("firstName", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Apellido
+                      <input
+                        value={guestForm.lastName}
+                        onChange={(e) => setGuestField("lastName", e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <div className="admin-walkin-actions">
+                    <select
+                      className="admin-walkin-select"
+                      value={guestTableChoice || selectedId || tables[0]?.id || ""}
+                      onChange={(e) => setGuestTableChoice(e.target.value)}
+                    >
+                      {tables.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="admin-action-btn accent"
+                      onClick={handleSeatGuest}
+                      disabled={guestSaving}
+                    >
+                      {guestSaving ? "Sentando..." : "Sentar invitado"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
-
-          {toast && <div className="toast">{toast}</div>}
         </div>
       )}
     </>

@@ -12,6 +12,7 @@
   --brand-gradient: linear-gradient(135deg, var(--brand-red), var(--brand-purple));
   --status: #8b7cf0;
   --status-dim: #241f3a;
+  --status-border: #3a3163;
   --warn: #e8a33d;
   --warn-dim: #3a2f14;
   --danger: var(--brand-red);
@@ -80,7 +81,7 @@ header {
   display: flex; justify-content: space-between; align-items: center;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-logo { height: 56px; }
+.brand-logo { height: 42px; }
 .brand-sub { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
 .logout-btn { font-size: 13px; color: var(--text-dim); background: none; border: none; cursor: pointer; }
 .logout-btn:hover { color: var(--text); }
@@ -89,7 +90,7 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
 .section-title { font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.6px; margin: 18px 0 10px; font-weight: 600; }
 
 .my-entry {
-  background: var(--status-dim); border: 1px solid #3a3163; border-radius: var(--radius);
+  background: var(--status-dim); border: 1px solid var(--status-border); border-radius: var(--radius);
   padding: 14px 16px; margin-bottom: 8px;
 }
 .my-entry-title { font-weight: 700; font-size: 16px; color: var(--status); }
@@ -162,7 +163,7 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
 .admin-waiting-count { color: var(--warn); font-size: 12px; }
 .admin-toggle-btn { font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; transition: background 0.15s; }
 .admin-toggle-btn:hover { background: var(--surface-2); }
-.admin-toggle-btn.accent { color: var(--status); border-color: #3a3163; }
+.admin-toggle-btn.accent { color: var(--status); border-color: var(--status-border); }
 .admin-toggle-btn.danger { color: var(--danger); border-color: var(--danger-dim); }
 
 .admin-detail { flex: 1.3; min-width: 320px; }
@@ -178,7 +179,7 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
 .admin-entry-actions { display: flex; gap: 6px; }
 .admin-action-btn { font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; transition: background 0.15s; }
 .admin-action-btn:hover { background: var(--surface-2); }
-.admin-action-btn.accent { color: var(--status); border-color: #3a3163; }
+.admin-action-btn.accent { color: var(--status); border-color: var(--status-border); }
 .admin-action-btn.danger { color: var(--danger); border-color: var(--danger-dim); }
 .admin-search-input {
   width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
@@ -557,6 +558,13 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
   padding: 10px; margin: 6px 0 0; font-size: 12px; overflow-x: auto; color: var(--text);
 }
+.admin-audit-diff {
+  display: flex; flex-direction: column; gap: 5px; margin-top: 6px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+}
+.admin-audit-diff-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.admin-audit-diff-field { color: var(--text-dim); min-width: 130px; flex-shrink: 0; }
+.admin-audit-diff-arrow { color: var(--text-dim); }
 .admin-audit-pagination {
   display: flex; align-items: center; justify-content: center; gap: 14px;
   margin-top: 14px; font-size: 13px; color: var(--text-dim);
@@ -570,6 +578,135 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   .admin-audit-entity { text-align: left; }
 }
 
+/* ── Gestión de usuarios ── */
+.admin-users { display: block; }
+.admin-users h2 { margin: 0 0 14px; font-size: 18px; }
+.admin-users-search {
+  display: flex; gap: 8px; margin-bottom: 16px;
+}
+.admin-users-search input {
+  flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-size: 14px;
+}
+.admin-users-search input:focus { outline: none; border-color: var(--brand-purple); }
+.admin-users-search button {
+  padding: 10px 16px; border-radius: 8px; border: none;
+  background: var(--brand-gradient); color: var(--text-invert); font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: filter 0.15s;
+}
+.admin-users-search button:hover:not(:disabled) { filter: brightness(1.08); }
+.admin-users-search button:disabled { opacity: 0.6; cursor: default; }
+
+.admin-users-layout {
+  display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap;
+}
+.admin-users-results { flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 6px; }
+.admin-users-row {
+  display: block; width: 100%; text-align: left;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; cursor: pointer; transition: border-color 0.15s;
+  font-family: inherit; color: inherit;
+}
+.admin-users-row:hover { border-color: var(--brand-purple); }
+.admin-users-row.selected { border-color: var(--brand-purple); box-shadow: 0 0 0 1px var(--brand-purple); }
+.admin-users-row-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+.admin-users-row-sub { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+
+.admin-user-status {
+  font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap;
+}
+.admin-user-status.status-pendiente { background: var(--warn-dim); color: var(--warn); }
+.admin-user-status.status-activa { background: var(--status-dim); color: var(--status); }
+.admin-user-status.status-bloqueada { background: var(--danger-dim); color: var(--danger-text); }
+.admin-user-status.status-deshabilitada { background: var(--surface-3); color: var(--text-dim); }
+
+.admin-users-detail { flex: 1.3; min-width: 320px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.admin-users-detail-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.admin-users-detail-header h3 { margin: 0; font-size: 16px; }
+.admin-users-nickname { color: var(--text-dim); font-weight: 400; font-size: 14px; }
+
+.admin-users-fields {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+  font-size: 13px; margin: 0 0 14px;
+}
+.admin-users-fields dt { color: var(--text-dim); }
+.admin-users-fields dd { margin: 0; }
+.admin-users-verified { color: var(--status); font-size: 12px; }
+.admin-users-unverified { color: var(--warn); font-size: 12px; }
+
+.admin-users-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+.admin-users-history { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.admin-users-history li {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px;
+}
+.admin-users-history-line { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.admin-users-history-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+.admin-users-empty { font-size: 13px; color: var(--text-dim); padding: 8px 0; }
+
+@media (max-width: 640px) {
+  .admin-users-fields { grid-template-columns: 1fr; }
+  .admin-users-fields dt { margin-top: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+}
+
+/* ── Logo clickeable (vuelve al inicio) ── */
+.brand { cursor: pointer; }
+
+/* ── Mi perfil ── */
+.profile-view {
+  max-width: 480px; margin: 0 auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.profile-loading { padding: 40px 16px; text-align: center; color: var(--text-dim); }
+.profile-header { display: flex; align-items: center; justify-content: space-between; }
+.profile-header h2 { margin: 0; font-size: 19px; }
+.profile-section {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.profile-readonly { gap: 0; }
+.profile-readonly-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px;
+}
+.profile-readonly-row:last-child { border-bottom: none; }
+.profile-label { color: var(--text-dim); flex-shrink: 0; }
+.profile-value { font-weight: 600; text-align: right; }
+.profile-msg-ok {
+  background: var(--status-dim); color: var(--status);
+  padding: 8px 12px; border-radius: 8px; font-size: 14px;
+}
+.profile-view button[type="submit"] {
+  background: var(--brand-gradient); color: var(--text-invert); border: none;
+  padding: 10px; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: filter 0.15s;
+}
+.profile-view button[type="submit"]:hover:not(:disabled) { filter: brightness(1.08); }
+.profile-view button[type="submit"]:disabled { opacity: 0.6; cursor: default; }
+
+@media (max-width: 480px) {
+  .profile-readonly-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .profile-value { text-align: left; }
+}
+
+/* ── Formulario de invitado (sentar sin cuenta) ── */
+.admin-guest-form {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px; margin-top: 10px; display: flex; flex-direction: column; gap: 12px;
+}
+.admin-guest-form label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-dim);
+}
+.admin-guest-form input,
+.admin-guest-form select {
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-size: 15px;
+}
+.admin-guest-form input:focus,
+.admin-guest-form select:focus { outline: none; border-color: var(--brand-purple); }
+
 [data-theme="light"] {
   --bg: #f5f3f8;
   --surface: #ffffff;
@@ -579,6 +716,7 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   --text: #221a29;
   --text-dim: #6b5f7a;
   --status-dim: #ece7fb;
+  --status-border: #c7bdf0;
   --warn-dim: #fdf1de;
   --danger-dim: #fde3e9;
   --danger-text: var(--brand-red);
@@ -587,158 +725,4 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
 
 [data-theme="light"] header {
   background: linear-gradient(180deg, #ffffff 0%, var(--bg) 100%);
-}
-
-/* ── Agregar al final de App.css (antes del bloque [data-theme="light"]) ── */
-
-.profile-view {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.profile-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.profile-header h2 { margin: 0; font-size: 19px; }
-
-.profile-loading {
-  font-size: 14px;
-  color: var(--text-dim);
-  padding: 20px 0;
-  text-align: center;
-}
-
-.profile-section {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow);
-}
-
-.profile-readonly-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
-}
-.profile-readonly-row:last-child { border-bottom: none; }
-.profile-label { color: var(--text-dim); }
-.profile-value { font-weight: 600; text-align: right; }
-
-.profile-section.admin-table-form button[type="submit"] {
-  background: var(--brand-gradient);
-  color: var(--text-invert);
-  border: none;
-  padding: 11px;
-  border-radius: var(--radius-sm);
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-  transition: filter 0.15s;
-}
-.profile-section.admin-table-form button[type="submit"]:hover { filter: brightness(1.08); }
-.profile-section.admin-table-form button[type="submit"]:disabled {
-  filter: none;
-  opacity: 0.6;
-  cursor: default;
-}
-
-.profile-msg-ok {
-  font-size: 13px;
-  color: var(--status);
-  background: var(--status-dim);
-  padding: 8px 12px;
-  border-radius: 8px;
-}
-
-/* ── Pulido panel admin (SOLO Mesas Vivas) — pegar al final de App.css ──
-   Todo va escopado bajo .admin-panel-mesas, que ahora es la clase extra
-   que tiene únicamente el wrapper de la sección "Mesas Vivas" en
-   AdminPanel.tsx — así Torneos (que reusa las mismas clases base) queda
-   sin cambios. */
-
-.admin-panel-mesas {
-  max-width: 1100px;
-  gap: 24px;
-  align-items: flex-start;
-  padding-top: 8px;
-}
-
-.admin-panel-mesas .admin-tables-list {
-  gap: 10px;
-  position: sticky;
-  top: 12px;
-}
-
-.admin-panel-mesas .admin-new-table-btn {
-  margin-bottom: 6px;
-}
-
-.admin-panel-mesas .admin-table-row {
-  padding: 14px 16px;
-  border-radius: 12px;
-}
-.admin-panel-mesas .admin-table-row.selected {
-  background: var(--surface-2);
-  box-shadow: 0 0 0 1.5px var(--brand-purple);
-}
-
-.admin-panel-mesas .admin-detail {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px 20px 22px;
-  box-shadow: var(--shadow);
-}
-
-/* Separa visualmente cada bloque (Sentados / Lista de espera / Sentar
-   presente) sin tener que envolverlos en divs nuevos en el TSX. */
-.admin-panel-mesas .admin-detail .admin-section-title {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-}
-.admin-panel-mesas .admin-detail .admin-section-title:first-child {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: none;
-}
-
-.admin-panel-mesas .admin-entry-row {
-  padding: 12px 14px;
-  border-radius: 10px;
-}
-
-.admin-panel-mesas .admin-entry-actions,
-.admin-panel-mesas .admin-row-actions {
-  gap: 8px;
-}
-
-.admin-panel-mesas .admin-walkin-row {
-  align-items: center;
-}
-
-.admin-panel-mesas .admin-empty {
-  padding: 12px 2px 4px;
-}
-
-@media (min-width: 860px) {
-  .admin-panel-mesas {
-    flex-wrap: nowrap;
-  }
-  .admin-panel-mesas .admin-tables-list {
-    flex: 0 0 300px;
-  }
-  .admin-panel-mesas .admin-detail {
-    flex: 1;
-  }
 }

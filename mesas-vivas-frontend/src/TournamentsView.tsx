@@ -65,10 +65,10 @@ function tournamentStatusInfo(t: Tournament, now: number) {
   }
 
   if (now < regCloses) {
-    return { label: `Cierre de inscripción en ${formatCountdown(regCloses - now)}`, cls: "badge-open" };
+    return { label: `Cierre de registro en ${formatCountdown(regCloses - now)}`, cls: "badge-open" };
   }
 
-  return { label: "Inscripción cerrada", cls: "badge-closed" };
+  return { label: "Registro cerrada", cls: "badge-closed" };
 }
 
 export default function TournamentsView() {

@@ -21,10 +21,91 @@ const ACTION_LABELS: Record<string, string> = {
   PLAYER_REMOVED_FROM_TABLE: "Retiró jugador de la mesa",
   ENTRY_REMOVED_FROM_WAITING_LIST: "Quitó jugador de la lista de espera",
   PLAYER_AUTO_LEFT_TABLE_ON_RESEAT: "Movimiento automático entre mesas",
+  USER_STATUS_CHANGED: "Cambió el estado de una cuenta",
 };
 
-function actionLabel(action: string) {
+export function actionLabel(action: string) {
   return ACTION_LABELS[action] || action;
+}
+
+// Nombre de la entidad en criollo, para que no se vea "CasinoTable" en
+// pantalla. Igual que con las acciones, lo que no está en la lista se
+// muestra tal cual en vez de ocultarse.
+const ENTITY_TYPE_LABELS: Record<string, string> = {
+  WaitingListEntry: "Lista de espera",
+  CasinoTable: "Mesa",
+  Tournament: "Torneo",
+  User: "Usuario",
+};
+
+function entityTypeLabel(entityType: string) {
+  return ENTITY_TYPE_LABELS[entityType] || entityType;
+}
+
+// Traducción de los valores de estado que pueden aparecer en previousState
+// / newState, sin importar de qué entidad vengan (mesa, torneo, usuario o
+// lista de espera) — los códigos no se pisan entre sí.
+const STATUS_VALUE_LABELS: Record<string, string> = {
+  // Usuario
+  PENDIENTE: "Pendiente de activación",
+  ACTIVA: "Activa",
+  BLOQUEADA: "Bloqueada",
+  DESHABILITADA: "Deshabilitada",
+  // Mesa
+  CERRADA: "Cerrada",
+  ABIERTA: "Abierta",
+  SUSPENDIDA: "Suspendida",
+  // Lista de espera
+  ANOTADO: "Anotado",
+  SENTADO: "Sentado",
+  RETIRADO: "Retirado",
+  CANCELADO_ADMIN: "Cancelado por el casino",
+  // Torneo
+  PROGRAMADO: "Programado",
+  EN_CURSO: "En curso",
+  FINALIZADO: "Finalizado",
+  CANCELADO: "Cancelado",
+};
+
+// Nombre en criollo de los campos que suelen aparecer en previousState /
+// newState. Lo que no está acá se muestra "humanizado" (separando
+// palabras por mayúscula) en vez de en inglés técnico crudo.
+const FIELD_LABELS: Record<string, string> = {
+  status: "Estado",
+  name: "Nombre",
+  cashOutAmount: "Monto retirado",
+  cancelReason: "Motivo",
+  smallBlind: "Ciega chica",
+  bigBlind: "Ciega grande",
+  minBuyIn: "Buy-in mínimo",
+  maxBuyIn: "Buy-in máximo",
+  capacity: "Capacidad",
+};
+
+function fieldLabel(key: string) {
+  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  // Fallback: "someFieldName" -> "Some field name"
+  const spaced = key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function isIsoDateString(value: any): boolean {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value);
+}
+
+// Traduce un valor de estado suelto (p. ej. para mostrar "Activa → Bloqueada"
+// fuera de esta pantalla, como en el historial de Gestión de usuarios).
+export function statusValueLabel(value: string) {
+  return STATUS_VALUE_LABELS[value] || value;
+}
+
+function displayValue(value: any): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Sí" : "No";
+  if (typeof value === "string" && STATUS_VALUE_LABELS[value]) return STATUS_VALUE_LABELS[value];
+  if (isIsoDateString(value)) return new Date(value).toLocaleString("es-AR");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }
 
 function formatDate(iso: string) {
@@ -33,6 +114,56 @@ function formatDate(iso: string) {
 
 const ENTITY_TYPES = ["WaitingListEntry", "CasinoTable", "Tournament", "User"];
 const PAGE_SIZE = 50;
+
+// Arma la lista de cambios en criollo a partir de previousState/newState.
+// Cuando existen los dos, muestra "Campo: antes → después". Cuando solo
+// existe uno de los dos (alta o baja), muestra los datos de ese estado
+// solo. Si ninguno tiene forma de objeto reconocible, cae al JSON crudo
+// (mejor mostrar algo raro que ocultar el evento).
+function AuditStateDiff({ previousState, newState }: { previousState: any; newState: any }) {
+  const prev = previousState && typeof previousState === "object" ? previousState : null;
+  const next = newState && typeof newState === "object" ? newState : null;
+
+  if (!prev && !next) return null;
+
+  if (!prev || !next) {
+    const only = prev || next;
+    const keys = Object.keys(only);
+    if (keys.length === 0) return null;
+    return (
+      <div>
+        <strong>{prev ? "Datos al momento del cambio:" : "Datos cargados:"}</strong>
+        <div className="admin-audit-diff">
+          {keys.map((k) => (
+            <div className="admin-audit-diff-row" key={k}>
+              <span className="admin-audit-diff-field">{fieldLabel(k)}</span>
+              <span>{displayValue(only[k])}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const keys = Array.from(new Set([...Object.keys(prev), ...Object.keys(next)]));
+  if (keys.length === 0) return null;
+
+  return (
+    <div>
+      <strong>Cambios:</strong>
+      <div className="admin-audit-diff">
+        {keys.map((k) => (
+          <div className="admin-audit-diff-row" key={k}>
+            <span className="admin-audit-diff-field">{fieldLabel(k)}</span>
+            <span>{displayValue(prev[k])}</span>
+            <span className="admin-audit-diff-arrow">→</span>
+            <span>{displayValue(next[k])}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminAuditLog() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
@@ -76,7 +207,7 @@ export default function AdminAuditLog() {
         <select value={entityType} onChange={(e) => setEntityType(e.target.value)}>
           <option value="">Todas las entidades</option>
           {ENTITY_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>{entityTypeLabel(t)}</option>
           ))}
         </select>
       </div>
@@ -99,22 +230,11 @@ export default function AdminAuditLog() {
                 {log.actor ? `${log.actor.firstName} ${log.actor.lastName}` : "Sistema"}
               </div>
               <div className="admin-audit-action">{actionLabel(log.action)}</div>
-              <div className="admin-audit-entity">{log.entityType}</div>
+              <div className="admin-audit-entity">{entityTypeLabel(log.entityType)}</div>
             </div>
             {expandedId === log.id && (
               <div className="admin-audit-detail">
-                {log.previousState && (
-                  <div>
-                    <strong>Estado anterior:</strong>
-                    <pre>{JSON.stringify(log.previousState, null, 2)}</pre>
-                  </div>
-                )}
-                {log.newState && (
-                  <div>
-                    <strong>Estado nuevo:</strong>
-                    <pre>{JSON.stringify(log.newState, null, 2)}</pre>
-                  </div>
-                )}
+                <AuditStateDiff previousState={log.previousState} newState={log.newState} />
               </div>
             )}
           </div>

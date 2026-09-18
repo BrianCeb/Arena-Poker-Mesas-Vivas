@@ -2,7 +2,11 @@ import prisma from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { broadcastTablesChanged } from "../lib/realtime";
 
-const RECENT_CASHOUT_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 horas
+// Configurable por entorno para que el casino pueda ajustar la ventana sin
+// tocar código ni redeployar. RECENT_CASHOUT_WINDOW_MINUTES en el .env;
+// si no está definida, se usa el default de 2 horas (120 minutos).
+const RECENT_CASHOUT_WINDOW_MS =
+  Number(process.env.RECENT_CASHOUT_WINDOW_MINUTES || 120) * 60 * 1000;
 
 function formatMinutesAgo(date: Date): string {
   const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
@@ -361,6 +365,114 @@ export async function seatWalkin(tableId: string, targetUserId: string, actorId:
   } catch (err: any) {
     if (err.code === "P2002") {
       throw new AppError(409, "Ese jugador ya tiene una inscripción activa en esta mesa.");
+    }
+    throw err;
+  }
+}
+
+// Sentar a alguien que llegó al casino SIN cuenta en la app. A diferencia
+// de seatWalkin (que sienta a un usuario ya registrado), acá el personal
+// carga los datos mínimos a mano y la entrada queda con userId null —
+// identificada solo por su documento, igual que cualquier otra entrada.
+export async function seatWalkinGuest(
+  tableId: string,
+  guest: { documentType: string; documentNumber: string; firstName: string; lastName: string },
+  actorId: string
+) {
+  const documentType = guest.documentType as any;
+  const documentNumber = (guest.documentNumber || "").trim();
+  const firstName = (guest.firstName || "").trim();
+  const lastName = (guest.lastName || "").trim();
+
+  if (!documentType || !documentNumber || !firstName || !lastName) {
+    throw new AppError(400, "Documento, nombre y apellido son obligatorios.");
+  }
+
+  // Si esta persona ya tiene una cuenta registrada, no creamos una
+  // entrada "fantasma" sin userId — le avisamos al personal para que la
+  // busque por nombre/DNI en el buscador normal y quede bien vinculada.
+  const existingUser = await prisma.user.findUnique({
+    where: { documentType_documentNumber: { documentType, documentNumber } },
+  });
+  if (existingUser) {
+    throw new AppError(
+      409,
+      "Esta persona ya tiene una cuenta registrada. Buscala por nombre o DNI en vez de cargarla como invitado."
+    );
+  }
+
+  const table = await prisma.casinoTable.findUnique({ where: { id: tableId } });
+  if (!table || table.deletedAt) {
+    throw new AppError(404, "Mesa no encontrada.");
+  }
+
+  const seatedCount = await prisma.waitingListEntry.count({
+    where: { tableId, status: "SENTADO" },
+  });
+  if (seatedCount >= table.capacity) {
+    throw new AppError(409, "La mesa no tiene lugar disponible.");
+  }
+
+  // Mismo criterio que en seatWalkin: si esta persona (por documento) ya
+  // figura sentada en otra mesa, la movemos automáticamente.
+  const otherSeatedElsewhere = await prisma.waitingListEntry.findFirst({
+    where: { documentType, documentNumber, status: "SENTADO" },
+    include: { table: true },
+  });
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      if (otherSeatedElsewhere) {
+        await tx.waitingListEntry.update({
+          where: { id: otherSeatedElsewhere.id },
+          data: { status: "RETIRADO", leftAt: new Date() },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId,
+            action: "PLAYER_AUTO_LEFT_TABLE_ON_RESEAT",
+            entityType: "WaitingListEntry",
+            entityId: otherSeatedElsewhere.id,
+            previousState: { status: "SENTADO", tableId: otherSeatedElsewhere.tableId, tableName: otherSeatedElsewhere.table.name },
+            newState: { status: "RETIRADO", reason: `Sentado en ${table.name}` },
+          },
+        });
+      }
+
+      const entry = await tx.waitingListEntry.create({
+        data: {
+          userId: null,
+          tableId,
+          status: "SENTADO",
+          origin: "MANUAL_STAFF",
+          seatedAt: new Date(),
+          documentType,
+          documentNumber,
+          firstName,
+          lastName,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          action: "GUEST_SEATED_WALKIN",
+          entityType: "WaitingListEntry",
+          entityId: entry.id,
+          newState: { documentType, documentNumber, firstName, lastName, tableId, tableName: table.name },
+        },
+      });
+
+      return entry;
+    });
+
+    const warning = await checkRecentCashOutWarning(documentType, documentNumber);
+
+    broadcastTablesChanged();
+    return { ...result, ...(warning ? { warning } : {}) };
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      throw new AppError(409, "Esa persona ya tiene una inscripción activa en esta mesa.");
     }
     throw err;
   }

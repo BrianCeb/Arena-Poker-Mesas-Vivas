@@ -7,6 +7,7 @@ import {
   seatFromWaitingList,
   removeEntry,
   seatWalkin,
+  seatWalkinGuest,
 } from "../services/waitingListService";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { AppError } from "../lib/errors";
@@ -109,6 +110,29 @@ router.post(
     try {
       const { userId } = req.body;
       const entry = await seatWalkin(req.params.tableId, userId, req.user!.userId);
+      res.status(201).json(entry);
+    } catch (err) {
+      if (err instanceof AppError) return res.status(err.statusCode).json({ error: err.message });
+      console.error(err);
+      res.status(500).json({ error: "Error interno del servidor." });
+    }
+  }
+);
+
+// Invitado sin cuenta en la app: el personal carga documento + nombre a
+// mano en vez de buscar un usuario existente.
+router.post(
+  "/tables/:tableId/seat-walkin-guest",
+  requireAuth,
+  requireRole("ADMIN", "SUPERVISOR", "OPERADOR"),
+  async (req, res) => {
+    try {
+      const { documentType, documentNumber, firstName, lastName } = req.body;
+      const entry = await seatWalkinGuest(
+        req.params.tableId,
+        { documentType, documentNumber, firstName, lastName },
+        req.user!.userId
+      );
       res.status(201).json(entry);
     } catch (err) {
       if (err instanceof AppError) return res.status(err.statusCode).json({ error: err.message });
