@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { api, TableInput } from "./api";
 import { socket } from "./socket";
 import AdminTournaments from "./AdminTournaments";
+import AdminAuditLog from "./AdminAuditLog";
 
 interface Table {
   id: string;
@@ -242,7 +243,7 @@ function TableForm({
 }
 
 export default function AdminPanel() {
-  const [adminSection, setAdminSection] = useState<"mesas" | "torneos">("mesas");
+  const [adminSection, setAdminSection] = useState<"mesas" | "torneos" | "auditoria">("mesas");
 
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -335,8 +336,9 @@ export default function AdminPanel() {
 
   async function handleSeat(entry: Entry) {
     try {
-      await api.seatFromWaiting(entry.id);
+      const result = await api.seatFromWaiting(entry.id);
       showToast(`${entry.user.firstName} ${entry.user.lastName} sentado.`);
+      if (result?.warning) window.alert(result.warning);
       refreshAll();
     } catch (err: any) {
       showToast(err.message);
@@ -353,11 +355,41 @@ export default function AdminPanel() {
     }
   }
 
+  // Retiro de un jugador SENTADO: a diferencia de "Quitar" de la lista de
+  // espera, acá preguntamos si se lleva fichas y, si es así, el monto
+  // aproximado, para dejarlo registrado en cashOutAmount/cashOutAt.
+  async function handleRemoveSeated(entry: Entry) {
+    const withChips = window.confirm(
+      `¿${entry.user.firstName} ${entry.user.lastName} se retira con fichas?`
+    );
+
+    let cashOutAmount: number | undefined;
+    if (withChips) {
+      const raw = window.prompt("Monto aproximado de cash-out:");
+      if (raw === null) return; // canceló el prompt, no hacemos nada
+      const parsed = Number(raw);
+      if (raw.trim() === "" || isNaN(parsed) || parsed < 0) {
+        showToast("Monto inválido. No se realizó el retiro.");
+        return;
+      }
+      cashOutAmount = parsed;
+    }
+
+    try {
+      await api.removeEntry(entry.id, undefined, cashOutAmount);
+      showToast(`${entry.user.firstName} ${entry.user.lastName} removido.`);
+      refreshAll();
+    } catch (err: any) {
+      showToast(err.message);
+    }
+  }
+
   async function handleSeatWalkin(user: SearchResult, tableId: string) {
     try {
-      await api.seatWalkin(tableId, user.id);
+      const result = await api.seatWalkin(tableId, user.id);
       const targetTable = tables.find((t) => t.id === tableId);
       showToast(`${user.firstName} ${user.lastName} sentado en ${targetTable?.name} (presente, sin lista).`);
+      if (result?.warning) window.alert(result.warning);
       setSearchQuery("");
       setSearchResults([]);
       refreshAll();
@@ -383,10 +415,18 @@ export default function AdminPanel() {
         >
           Torneos
         </button>
+        <button
+          className={adminSection === "auditoria" ? "active" : ""}
+          onClick={() => setAdminSection("auditoria")}
+        >
+          Auditoría
+        </button>
       </div>
 
       {adminSection === "torneos" ? (
         <AdminTournaments />
+      ) : adminSection === "auditoria" ? (
+        <AdminAuditLog />
       ) : (
         <div className="admin-panel">
           <div className="admin-tables-list">
@@ -484,7 +524,7 @@ export default function AdminPanel() {
                       DNI {e.user.documentNumber} · {e.origin === "MANUAL_STAFF" ? "presente, sin lista" : "vía app"}
                     </div>
                   </div>
-                  <button className="admin-action-btn danger" onClick={() => handleRemove(e)}>Retirar</button>
+                  <button className="admin-action-btn danger" onClick={() => handleRemoveSeated(e)}>Retirar</button>
                 </div>
               ))}
 

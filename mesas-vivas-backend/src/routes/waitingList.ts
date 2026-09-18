@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   joinWaitingList,
   leaveWaitingList,
-  getMyEntry,
+  getMyEntries,
   getTableEntries,
   seatFromWaitingList,
   removeEntry,
@@ -26,9 +26,9 @@ router.post("/tables/:tableId/join", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/leave", requireAuth, async (req, res) => {
+router.post("/tables/:tableId/leave", requireAuth, async (req, res) => {
   try {
-    const result = await leaveWaitingList(req.user!.userId);
+    const result = await leaveWaitingList(req.user!.userId, req.params.tableId);
     res.json(result);
   } catch (err) {
     if (err instanceof AppError) return res.status(err.statusCode).json({ error: err.message });
@@ -39,8 +39,8 @@ router.post("/leave", requireAuth, async (req, res) => {
 
 router.get("/me", requireAuth, async (req, res) => {
   try {
-    const entry = await getMyEntry(req.user!.userId);
-    res.json(entry);
+    const entries = await getMyEntries(req.user!.userId);
+    res.json(entries);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error interno del servidor." });
@@ -86,7 +86,12 @@ router.delete(
   requireRole("ADMIN", "SUPERVISOR"),
   async (req, res) => {
     try {
-      const result = await removeEntry(req.params.entryId, req.user!.userId, req.body?.reason);
+      const result = await removeEntry(
+        req.params.entryId,
+        req.user!.userId,
+        req.body?.reason,
+        req.body?.cashOutAmount
+      );
       res.json(result);
     } catch (err) {
       if (err instanceof AppError) return res.status(err.statusCode).json({ error: err.message });

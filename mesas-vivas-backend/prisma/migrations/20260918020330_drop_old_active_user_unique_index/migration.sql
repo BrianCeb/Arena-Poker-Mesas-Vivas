@@ -1,0 +1,1 @@
+DROP INDEX "waiting_list_entries_active_user_unique";

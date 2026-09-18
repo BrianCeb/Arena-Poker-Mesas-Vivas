@@ -12,6 +12,7 @@ import tablesRouter from "./routes/tables";
 import waitingListRouter from "./routes/waitingList";
 import usersRouter from "./routes/users";
 import tournamentsRouter from "./routes/tournaments";
+import auditLogsRouter from "./routes/auditLogs";
 import { setIO } from "./lib/realtime";
 
 dotenv.config();
@@ -36,6 +37,7 @@ app.use("/tables", tablesRouter);
 app.use("/waiting-list", waitingListRouter);
 app.use("/users", usersRouter);
 app.use("/tournaments", tournamentsRouter);
+app.use("/audit-logs", auditLogsRouter);
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });

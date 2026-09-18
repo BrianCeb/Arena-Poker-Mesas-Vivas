@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, setToken, setStoredUser, getStoredUser } from "./api";
+import { api, setToken, setRefreshToken, setStoredUser, getStoredUser } from "./api";
 import { socket } from "./socket";
 import AdminPanel from "./AdminPanel";
 import RegisterForm from "./RegisterForm";
 import TournamentsView from "./TournamentsView";
+import ProfileView from "./ProfileView";
 
 interface Table {
   id: string;
@@ -21,6 +22,7 @@ interface Table {
 interface MyEntry {
   id: string;
   tableId: string;
+  status: "ANOTADO" | "SENTADO";
   table: Table;
 }
 
@@ -48,13 +50,15 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
 
   const [tables, setTables] = useState<Table[]>([]);
-  const [myEntry, setMyEntry] = useState<MyEntry | null>(null);
+  const [myEntries, setMyEntries] = useState<MyEntry[]>([]);
   const [toast, setToast] = useState("");
 
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(""), 2500);
   }
+
+  const [showProfile, setShowProfile] = useState(false);
 
   const loadTables = useCallback(async () => {
     try {
@@ -65,38 +69,50 @@ export default function App() {
     }
   }, []);
 
-  const loadMyEntry = useCallback(async () => {
+  const loadMyEntries = useCallback(async () => {
     if (!loggedIn) {
-      setMyEntry(null);
+      setMyEntries([]);
       return;
     }
     try {
-      const data = await api.getMyEntry();
-      setMyEntry(data);
+      const data = await api.getMyEntries();
+      setMyEntries(data);
     } catch (err) {
-      // token vencido u otro problema de auth: cerramos la sesión para
-      // que vuelva a aparecer el botón de "Iniciar sesión".
-      setToken(null);
-      setStoredUser(null);
-      setCurrentUser(null);
-      setLoggedIn(false);
-      setMyEntry(null);
+      // Si era un 401 por token vencido, api.ts ya intentó renovarlo solo
+      // antes de llegar acá — si igual falló, el listener de
+      // "auth:expired" se encarga de cerrar la sesión. Acá solo dejamos
+      // la lista vacía para no mostrar datos viejos.
+      setMyEntries([]);
     }
   }, [loggedIn]);
 
   useEffect(() => {
     // Las mesas son públicas, así que se cargan siempre, con o sin sesión.
     loadTables();
-    loadMyEntry();
+    loadMyEntries();
     const handleChange = () => {
       loadTables();
-      loadMyEntry();
+      loadMyEntries();
     };
     socket.on("tables:changed", handleChange);
     return () => {
       socket.off("tables:changed", handleChange);
     };
-  }, [loadTables, loadMyEntry]);
+  }, [loadTables, loadMyEntries]);
+
+  useEffect(() => {
+    // Lo dispara api.ts cuando un 401 no se pudo resolver renovando el
+    // access token (el refresh token también venció o fue revocado) —
+    // ahí ya no queda otra que mandar al usuario de nuevo al login.
+    function handleAuthExpired() {
+      setCurrentUser(null);
+      setLoggedIn(false);
+      setMyEntries([]);
+      showToast("Tu sesión venció. Iniciá sesión de nuevo.");
+    }
+    window.addEventListener("auth:expired", handleAuthExpired);
+    return () => window.removeEventListener("auth:expired", handleAuthExpired);
+  }, []);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -104,6 +120,7 @@ export default function App() {
     try {
       const result = await api.login(email, password);
       setToken(result.accessToken);
+      setRefreshToken(result.refreshToken);
       setStoredUser(result.user);
       setCurrentUser(result.user);
       setLoggedIn(true);
@@ -115,12 +132,21 @@ export default function App() {
     }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    // Best-effort: si falla (por ejemplo, ya no hay conexión), igual
+    // limpiamos la sesión local — no tiene sentido dejar al usuario
+    // atrapado en la app por un error de red al desloguearse.
+    try {
+      await api.logout();
+    } catch {
+      // no-op
+    }
     setToken(null);
+    setRefreshToken(null);
     setStoredUser(null);
     setCurrentUser(null);
     setLoggedIn(false);
-    setMyEntry(null);
+    setMyEntries([]);
   }
 
   async function handleJoin(tableId: string) {
@@ -132,18 +158,18 @@ export default function App() {
       await api.joinTable(tableId);
       showToast("Te anotaste correctamente.");
       loadTables();
-      loadMyEntry();
+      loadMyEntries();
     } catch (err: any) {
       showToast(err.message);
     }
   }
 
-  async function handleLeave() {
+  async function handleLeave(tableId: string) {
     try {
-      await api.leaveList();
+      await api.leaveList(tableId);
       showToast("Te retiraste de la lista.");
       loadTables();
-      loadMyEntry();
+      loadMyEntries();
     } catch (err: any) {
       showToast(err.message);
     }
@@ -167,10 +193,22 @@ export default function App() {
             >
               {theme === "dark" ? "☀️" : "🌙"}
             </button>
+            <button className="logout-btn" onClick={() => setShowProfile(true)}>Mi perfil</button>
             <button className="logout-btn" onClick={handleLogout}>Cerrar sesión</button>
           </div>
         </header>
-        <AdminPanel />
+        {showProfile ? (
+          <ProfileView
+            onClose={() => setShowProfile(false)}
+            onPasswordChanged={async () => {
+              await handleLogout();
+              setShowProfile(false);
+              showToast("Contraseña actualizada. Iniciá sesión de nuevo.");
+            }}
+          />
+        ) : (
+          <AdminPanel />
+        )}
         {toast && <div className="toast">{toast}</div>}
       </>
     );
@@ -241,7 +279,10 @@ export default function App() {
             {theme === "dark" ? "☀️" : "🌙"}
           </button>
           {loggedIn ? (
-            <button className="logout-btn" onClick={handleLogout}>Cerrar sesión</button>
+            <>
+              <button className="logout-btn" onClick={() => setShowProfile(true)}>Mi perfil</button>
+              <button className="logout-btn" onClick={handleLogout}>Cerrar sesión</button>
+            </>
           ) : (
             <button className="login-btn-header" onClick={() => setShowAuth("login")}>
               Iniciar sesión
@@ -265,20 +306,43 @@ export default function App() {
         </button>
       </div>
 
-      {publicTab === "torneos" ? (
+      {showProfile ? (
+        <ProfileView
+          onClose={() => setShowProfile(false)}
+          onPasswordChanged={async () => {
+            await handleLogout();
+            setShowProfile(false);
+            showToast("Contraseña actualizada. Iniciá sesión de nuevo.");
+          }}
+        />
+      ) : publicTab === "torneos" ? (
         <TournamentsView />
       ) : (
         <main>
           {loggedIn && (
             <>
-              <div className="section-title">Tu inscripción</div>
-              {myEntry ? (
-                <div className="my-entry">
-                  <div className="my-entry-title">
-                    {myEntry.table.name} — ${myEntry.table.smallBlind} / ${myEntry.table.bigBlind}
-                  </div>
-                  <div className="my-entry-detail">Anotado en esta mesa</div>
-                  <button className="btn-leave" onClick={handleLeave}>Retirarme de la lista</button>
+              <div className="section-title">Tus inscripciones</div>
+              {myEntries.length > 0 ? (
+                <div className="my-entries">
+                  {myEntries.map((entry) => (
+                    <div className="my-entry" key={entry.id}>
+                      <div className="my-entry-title">
+                        {entry.table.name} — ${entry.table.smallBlind} / ${entry.table.bigBlind}
+                      </div>
+                      <div className="my-entry-detail">
+                        {entry.status === "SENTADO" ? "Sentado en esta mesa" : "Anotado, en espera"}
+                      </div>
+                      {entry.status === "SENTADO" ? (
+                        <div className="my-entry-seated-note">
+                          Estás jugando en esta mesa. Para dejarla, avisale al personal del casino.
+                        </div>
+                      ) : (
+                        <button className="btn-leave" onClick={() => handleLeave(entry.tableId)}>
+                          Retirarme de la lista
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="empty-state">No estás anotado en ninguna mesa.</div>
@@ -290,8 +354,8 @@ export default function App() {
           {tables.map((t) => {
             const status = tableStatusInfo(t);
             const pct = Math.round((t.seated / t.capacity) * 100);
-            const isJoinedHere = myEntry?.tableId === t.id;
-            const canJoin = t.status === "ABIERTA" && !myEntry;
+            const myEntryHere = myEntries.find((e) => e.tableId === t.id);
+            const canJoin = t.status === "ABIERTA" && !myEntryHere;
             return (
               <div className="table-card" key={t.id}>
                 <div className="table-card-top">
@@ -318,13 +382,15 @@ export default function App() {
                 )}
                 <button
                   className="btn-join"
-                  disabled={!canJoin && !isJoinedHere && loggedIn}
+                  disabled={!canJoin && !myEntryHere && loggedIn}
                   onClick={() => handleJoin(t.id)}
                 >
                   {!loggedIn
                     ? "Iniciar sesión para anotarse"
-                    : isJoinedHere
-                      ? "Ya estás anotado acá"
+                    : myEntryHere
+                      ? myEntryHere.status === "SENTADO"
+                        ? "Ya estás sentado acá"
+                        : "Ya estás anotado acá"
                       : t.status !== "ABIERTA"
                         ? "Mesa cerrada"
                         : "Anotarse en lista"}

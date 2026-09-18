@@ -9,6 +9,15 @@ export function setToken(token: string | null) {
   else localStorage.removeItem("accessToken");
 }
 
+function getRefreshToken(): string | null {
+  return localStorage.getItem("refreshToken");
+}
+
+export function setRefreshToken(token: string | null) {
+  if (token) localStorage.setItem("refreshToken", token);
+  else localStorage.removeItem("refreshToken");
+}
+
 export function setStoredUser(user: any | null) {
   if (user) localStorage.setItem("user", JSON.stringify(user));
   else localStorage.removeItem("user");
@@ -19,7 +28,42 @@ export function getStoredUser(): any | null {
   return raw ? JSON.parse(raw) : null;
 }
 
-async function request(path: string, options: RequestInit = {}) {
+// Evita que dos pedidos que reciben 401 al mismo tiempo disparen dos
+// refresh simultáneos — el segundo espera el resultado del primero.
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function doRefresh(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+
+  try {
+    const res = await fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    setToken(data.accessToken);
+    setRefreshToken(data.refreshToken);
+    return data.accessToken as string;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession() {
+  setToken(null);
+  setRefreshToken(null);
+  setStoredUser(null);
+}
+
+// Rutas que jamás deberían disparar un intento de refresh (evita loops:
+// si /auth/refresh mismo devuelve 401, no tiene sentido reintentar).
+const NO_REFRESH_PATHS = ["/auth/refresh", "/auth/login"];
+
+async function request(path: string, options: RequestInit = {}, isRetry = false): Promise<any> {
   const token = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -28,6 +72,21 @@ async function request(path: string, options: RequestInit = {}) {
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers, cache: "no-store" });
+
+  if (res.status === 401 && !isRetry && !NO_REFRESH_PATHS.includes(path)) {
+    if (!refreshInFlight) {
+      refreshInFlight = doRefresh().finally(() => {
+        refreshInFlight = null;
+      });
+    }
+    const newToken = await refreshInFlight;
+    if (newToken) {
+      return request(path, options, true);
+    }
+    clearSession();
+    window.dispatchEvent(new CustomEvent("auth:expired"));
+  }
+
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
 
@@ -84,6 +143,26 @@ export interface TableInput {
   notes?: string;
 }
 
+export interface ProfileUpdateInput {
+  phone?: string | null;
+  nickname?: string | null;
+}
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+  confirmNewPassword: string;
+}
+
+export interface AuditLogFilters {
+  entityType?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request("/auth/login", {
@@ -95,11 +174,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  logout: () =>
+    request("/auth/logout", {
+      method: "POST",
+      body: JSON.stringify({ refreshToken: getRefreshToken() }),
+    }),
+
+  // ── Perfil ──
+  getProfile: () => request("/users/me"),
+  updateProfile: (data: ProfileUpdateInput) =>
+    request("/users/me", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  changePassword: (data: ChangePasswordInput) =>
+    request("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   getTables: () => request("/tables"),
-  getMyEntry: () => request("/waiting-list/me"),
+  getMyEntries: () => request("/waiting-list/me"),
   joinTable: (tableId: string) =>
     request(`/waiting-list/tables/${tableId}/join`, { method: "POST" }),
-  leaveList: () => request("/waiting-list/leave", { method: "POST" }),
+  leaveList: (tableId: string) =>
+    request(`/waiting-list/tables/${tableId}/leave`, { method: "POST" }),
   getTournaments: () => request("/tournaments"),
   getTournament: (id: string) => request(`/tournaments/${id}`),
 
@@ -124,8 +223,11 @@ export const api = {
   getTableEntries: (tableId: string) => request(`/waiting-list/tables/${tableId}/entries`),
   seatFromWaiting: (entryId: string) =>
     request(`/waiting-list/${entryId}/seat`, { method: "PATCH" }),
-  removeEntry: (entryId: string) =>
-    request(`/waiting-list/${entryId}`, { method: "DELETE" }),
+  removeEntry: (entryId: string, reason?: string, cashOutAmount?: number) =>
+    request(`/waiting-list/${entryId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ reason, cashOutAmount }),
+    }),
   searchUsers: (q: string) => request(`/users/search?q=${encodeURIComponent(q)}`),
   seatWalkin: (tableId: string, userId: string) =>
     request(`/waiting-list/tables/${tableId}/seat-walkin`, {
@@ -146,4 +248,17 @@ export const api = {
   duplicateTournament: (id: string) =>
     request(`/tournaments/${id}/duplicate`, { method: "POST" }),
   deleteTournament: (id: string) => request(`/tournaments/${id}`, { method: "DELETE" }),
+
+  // ── Admin: auditoría ──
+  getAuditLogs: (params: AuditLogFilters = {}) => {
+    const qs = new URLSearchParams();
+    if (params.entityType) qs.set("entityType", params.entityType);
+    if (params.action) qs.set("action", params.action);
+    if (params.from) qs.set("from", params.from);
+    if (params.to) qs.set("to", params.to);
+    if (params.page) qs.set("page", String(params.page));
+    if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+    const query = qs.toString();
+    return request(`/audit-logs${query ? `?${query}` : ""}`);
+  },
 };

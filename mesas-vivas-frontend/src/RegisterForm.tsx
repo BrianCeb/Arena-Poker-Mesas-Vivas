@@ -179,7 +179,7 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
 
       <div className="form-row">
         <input
-          placeholder="Teléfono (opcional)"
+          placeholder="Teléfono "
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />

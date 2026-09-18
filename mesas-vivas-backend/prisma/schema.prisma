@@ -217,43 +217,68 @@ model TableStatusHistory {
 }
 
 // ── LISTA DE ESPERA ───────────────────────────────────────────
-// NOTA: la restricción "un usuario no puede tener más de una
-// inscripción activa (ANOTADO o SENTADO) a la vez" NO se puede
-// expresar como @@unique condicional en Prisma. Se agrega como
-// índice único parcial en una migración SQL manual (Fase 1).
+// NOTA: las restricciones de unicidad ("un jugador no puede tener
+// dos inscripciones activas en la MISMA mesa" y "no puede estar
+// SENTADO en más de una mesa a la vez") NO se pueden expresar como
+// @@unique condicional en Prisma. Se agregan como índices únicos
+// parciales en una migración SQL manual, identificando a la
+// persona por documento (no por userId) para que también cubran
+// a los walk-ins sin cuenta.
 
 model WaitingListEntry {
-  id            String            @id @default(uuid())
-  userId        String            @map("user_id")
-  tableId       String            @map("table_id")
-  status        WaitingListStatus @default(ANOTADO)
-  origin        WaitingListOrigin @default(APP)
-  createdAt     DateTime          @default(now()) @map("created_at")
-  seatedAt      DateTime?         @map("seated_at")
-  leftAt        DateTime?         @map("left_at")
-  cancelledBy   String?           @map("cancelled_by")
-  cancelReason  String?           @map("cancel_reason")
+  id             String            @id @default(uuid())
+  userId         String?           @map("user_id")
+  tableId        String            @map("table_id")
+  documentType   DocumentType      @map("document_type")
+  documentNumber String            @map("document_number")
+  firstName      String            @map("first_name")
+  lastName       String            @map("last_name")
+  status         WaitingListStatus @default(ANOTADO)
+  origin         WaitingListOrigin @default(APP)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  seatedAt       DateTime?         @map("seated_at")
+  leftAt         DateTime?         @map("left_at")
+  cashOutAmount  Decimal?          @map("cash_out_amount")
+  cashOutAt      DateTime?         @map("cash_out_at")
+  cancelledBy    String?           @map("cancelled_by")
+  cancelReason   String?           @map("cancel_reason")
 
-  user           User        @relation(fields: [userId], references: [id])
-  table          CasinoTable @relation(fields: [tableId], references: [id])
-  cancelledByUser User?      @relation("EntryCancelledBy", fields: [cancelledBy], references: [id])
+  user            User?       @relation(fields: [userId], references: [id])
+  table           CasinoTable @relation(fields: [tableId], references: [id])
+  cancelledByUser User?       @relation("EntryCancelledBy", fields: [cancelledBy], references: [id])
 
   @@index([tableId, status])
   @@index([userId, status])
+  @@index([documentType, documentNumber])
   @@map("waiting_list_entries")
 }
 
+// ── AUDITORÍA ──────────────────────────────────────────────────
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorId       String?  @map("actor_id")
+  action        String
+  entityType    String   @map("entity_type")
+  entityId      String   @map("entity_id")
+  previousState Json?    @map("previous_state")
+  newState      Json?    @map("new_state")
+  ipAddress     String?  @map("ip_address")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
 // ── TORNEOS ────────────────────────────────────────────────────
-// Sección informativa (no hay inscripción dentro de la app en esta
-// primera versión). El admin carga fecha, condiciones y sube dos
-// imágenes (flyer + estructura de ciegas). El estado PROGRAMADO/
-// EN_CURSO se calcula en el frontend a partir de las fechas; el
-// admin puede forzar CANCELADO o FINALIZADO manualmente.
 
 model Tournament {
   id                    String            @id @default(uuid())
   name                  String
-  type                  String            // texto libre: Freezeout, Bounty, Sit & Go, High Roller, etc.
+  type                  String
   startsAt              DateTime          @map("starts_at")
   registrationClosesAt  DateTime          @map("registration_closes_at")
   buyIn                 Decimal           @map("buy_in")
@@ -282,26 +307,6 @@ model Tournament {
   @@index([status])
   @@index([startsAt])
   @@map("tournaments")
-}
-
-// ── AUDITORÍA ──────────────────────────────────────────────────
-
-model AuditLog {
-  id            String   @id @default(uuid())
-  actorId       String?  @map("actor_id")
-  action        String
-  entityType    String   @map("entity_type")
-  entityId      String   @map("entity_id")
-  previousState Json?    @map("previous_state")
-  newState      Json?    @map("new_state")
-  ipAddress     String?  @map("ip_address")
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  actor User? @relation("AuditActor", fields: [actorId], references: [id])
-
-  @@index([entityType, entityId])
-  @@index([actorId])
-  @@map("audit_logs")
 }
 
 // ── TÉRMINOS Y CONDICIONES ──────────────────────────────────────

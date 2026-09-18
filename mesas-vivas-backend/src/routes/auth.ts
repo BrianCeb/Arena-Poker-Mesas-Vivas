@@ -8,8 +8,10 @@ import {
   logoutUser,
   requestPasswordReset,
   confirmPasswordReset,
+  changePassword,
   RegisterError,
 } from "../services/authService";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -174,6 +176,27 @@ router.post("/reset-password", async (req, res) => {
   try {
     const { token, newPassword, confirmNewPassword } = req.body;
     const result = await confirmPasswordReset(token, newPassword, confirmNewPassword);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof RegisterError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error(err);
+    res.status(500).json({ error: "Error interno del servidor." });
+  }
+});
+
+// Cambio de contraseña estando logueado (distinto del reset por email:
+// acá el usuario ya está autenticado y confirma con su contraseña actual).
+router.post("/change-password", requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword, confirmNewPassword } = req.body;
+    const result = await changePassword(
+      req.user!.userId,
+      currentPassword,
+      newPassword,
+      confirmNewPassword
+    );
     res.json(result);
   } catch (err) {
     if (err instanceof RegisterError) {

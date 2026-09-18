@@ -379,6 +379,53 @@ export async function logoutUser(rawRefreshToken: string) {
   });
 }
 
+// ── CAMBIO DE CONTRASEÑA (usuario logueado) ──────────────────
+
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  confirmNewPassword: string
+) {
+  if (!currentPassword || !newPassword) {
+    throw new RegisterError(400, "Faltan campos obligatorios.");
+  }
+  if (newPassword !== confirmNewPassword) {
+    throw new RegisterError(400, "Las contraseñas nuevas no coinciden.");
+  }
+  if (newPassword.length < 8) {
+    throw new RegisterError(400, "La contraseña debe tener al menos 8 caracteres.");
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new RegisterError(404, "Usuario no encontrado.");
+  }
+
+  const currentMatches = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!currentMatches) {
+    throw new RegisterError(401, "La contraseña actual es incorrecta.");
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    }),
+    // Igual criterio que en el reset por email: cambiar la contraseña
+    // cierra todas las sesiones activas (incluida esta), por seguridad —
+    // si alguien más tenía un refresh token de esta cuenta, queda cortado.
+    prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+
+  return { message: "Contraseña actualizada. Iniciá sesión de nuevo." };
+}
+
 // ── RECUPERACIÓN DE CONTRASEÑA ───────────────────────────────
 
 const RESET_TOKEN_TTL_HOURS = 1; // más corto que el de verificación a propósito
