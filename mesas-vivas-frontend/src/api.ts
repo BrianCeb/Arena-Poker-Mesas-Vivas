@@ -1,4 +1,10 @@
-const API_URL = "http://localhost:3000";
+/// <reference types="vite/client" />
+
+// En desarrollo, si no se define VITE_API_URL, cae a localhost:3000 (el
+// backend corriendo en tu PC). En producción, VITE_API_URL tiene que
+// apuntar al dominio real del backend — Vite reemplaza esto en build time,
+// así que hace falta rebuildear el frontend si este valor cambia.
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 function getToken(): string | null {
   return localStorage.getItem("accessToken");
@@ -127,6 +133,7 @@ export interface RegisterInput {
   confirmPassword: string;
   birthDate: string;
   acceptedTerms: boolean;
+  captchaToken: string;
 }
 
 export interface TableInput {
@@ -200,10 +207,10 @@ export interface AdminUserHistoryEntry {
 }
 
 export const api = {
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, captchaToken: string) =>
     request("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, captchaToken }),
     }),
   register: (data: RegisterInput) =>
     request("/auth/register", {
@@ -214,6 +221,15 @@ export const api = {
     request("/auth/logout", {
       method: "POST",
       body: JSON.stringify({ refreshToken: getRefreshToken() }),
+    }),
+  // "Olvidé mi contraseña": dispara el email con el link de reset. El
+  // link en sí apunta a una página servida por el backend (no React,
+  // ver GET /auth/reset-password en routes/auth.ts) — desde acá solo se
+  // pide el envío del mail.
+  forgotPassword: (email: string, captchaToken: string) =>
+    request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email, captchaToken }),
     }),
 
   // ── Perfil ──

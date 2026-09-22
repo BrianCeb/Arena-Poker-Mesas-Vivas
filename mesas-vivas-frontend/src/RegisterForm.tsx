@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "./api";
+import Turnstile from "./Turnstile";
 
 interface Props {
   onBackToLogin: () => void;
@@ -39,6 +40,7 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -62,6 +64,7 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
     if (password.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
     if (calculateAge(birthDate) < 18) return "Debés ser mayor de 18 años para registrarte.";
     if (!acceptedTerms) return "Debés aceptar los términos y condiciones.";
+    if (!captchaToken) return "Completá la verificación anti-bots.";
     return null;
   }
 
@@ -91,10 +94,15 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
         confirmPassword,
         birthDate,
         acceptedTerms,
+        captchaToken: captchaToken!,
       });
       setSuccess(true);
     } catch (err: any) {
       setError(err.message || "Error al registrarte.");
+      // Un token de Turnstile es de un solo uso — si el submit falló (por
+      // el motivo que sea), el token ya quedó consumido o vencido, así que
+      // reseteamos el widget para que el usuario pueda reintentar.
+      setCaptchaToken(null);
     } finally {
       setLoading(false);
     }
@@ -103,12 +111,13 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
   if (success) {
     return (
       <div className="auth-card">
+        <div className="auth-card-icon success">✉️</div>
         <h2>¡Listo!</h2>
         <p>
           Te mandamos un email a <strong>{email}</strong> con un link para activar tu cuenta.
           Revisá tu bandeja de entrada (y la carpeta de spam, por las dudas).
         </p>
-        <button onClick={onBackToLogin}>Volver al login</button>
+        <button className="btn-primary" onClick={onBackToLogin}>Volver al login</button>
       </div>
     );
   }
@@ -211,6 +220,8 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
         />
         Acepto los términos y condiciones
       </label>
+
+      <Turnstile onToken={setCaptchaToken} />
 
       <button type="submit" disabled={loading}>
         {loading ? "Creando cuenta..." : "Crear cuenta"}

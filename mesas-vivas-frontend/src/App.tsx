@@ -3,8 +3,10 @@ import { api, setToken, setRefreshToken, setStoredUser, getStoredUser } from "./
 import { socket } from "./socket";
 import AdminPanel from "./AdminPanel";
 import RegisterForm from "./RegisterForm";
+import ForgotPasswordForm from "./ForgotPasswordForm";
 import TournamentsView from "./TournamentsView";
 import ProfileView from "./ProfileView";
+import Turnstile from "./Turnstile";
 
 interface Table {
   id: string;
@@ -36,7 +38,7 @@ function tableStatusInfo(t: Table) {
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem("accessToken"));
   const [currentUser, setCurrentUser] = useState<any>(getStoredUser());
-  const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
+  const [showAuth, setShowAuth] = useState<"login" | "register" | "forgot" | null>(null);
   const [publicTab, setPublicTab] = useState<"mesas" | "torneos">("mesas");
   const [theme, setTheme] = useState<string>(() => localStorage.getItem("theme") || "dark");
 
@@ -48,6 +50,7 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [loginCaptchaToken, setLoginCaptchaToken] = useState<string | null>(null);
 
   const [tables, setTables] = useState<Table[]>([]);
   const [myEntries, setMyEntries] = useState<MyEntry[]>([]);
@@ -122,8 +125,14 @@ export default function App() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoginError("");
+
+    if (!loginCaptchaToken) {
+      setLoginError("Completá la verificación anti-bots.");
+      return;
+    }
+
     try {
-      const result = await api.login(email, password);
+      const result = await api.login(email, password, loginCaptchaToken);
       setToken(result.accessToken);
       setRefreshToken(result.refreshToken);
       setStoredUser(result.user);
@@ -132,8 +141,12 @@ export default function App() {
       setShowAuth(null);
       setEmail("");
       setPassword("");
+      setLoginCaptchaToken(null);
     } catch (err: any) {
       setLoginError(err.message);
+      // Token de Turnstile es de un solo uso — si el login falló, ya
+      // quedó consumido o vencido, así que reseteamos para el reintento.
+      setLoginCaptchaToken(null);
     }
   }
 
@@ -219,11 +232,22 @@ export default function App() {
     );
   }
 
-  // ── Overlay de login / registro (se puede cerrar y seguir mirando) ──
+  // ── Overlay de login / registro / recuperar contraseña (se puede cerrar y seguir mirando) ──
   if (showAuth === "register") {
     return (
       <div className="login-screen">
         <RegisterForm
+          onBackToLogin={() => setShowAuth("login")}
+          onClose={() => setShowAuth(null)}
+        />
+      </div>
+    );
+  }
+
+  if (showAuth === "forgot") {
+    return (
+      <div className="login-screen">
+        <ForgotPasswordForm
           onBackToLogin={() => setShowAuth("login")}
           onClose={() => setShowAuth(null)}
         />
@@ -255,6 +279,14 @@ export default function App() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          <button
+            type="button"
+            className="link-button login-forgot-link"
+            onClick={() => setShowAuth("forgot")}
+          >
+            ¿Olvidaste tu contraseña?
+          </button>
+          <Turnstile onToken={setLoginCaptchaToken} />
           <button className="login-btn" type="submit">Iniciar sesión</button>
           <button
             type="button"

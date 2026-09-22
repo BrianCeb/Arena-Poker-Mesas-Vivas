@@ -73,6 +73,7 @@ body {
 .login-btn:hover { filter: brightness(1.08); }
 .login-btn:active { transform: scale(0.99); }
 .login-error { color: var(--danger); font-size: 13px; margin-bottom: 10px; text-align: center; }
+.login-forgot-link { align-self: flex-end; font-size: 13px; margin: -4px 0 4px; padding: 2px; }
 
 header {
   padding: 18px 16px 14px;
@@ -241,7 +242,8 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   width: auto;
 }
 
-.auth-card button[type="submit"] {
+.auth-card button[type="submit"],
+.auth-card .btn-primary {
   background: var(--brand-gradient);
   color: var(--text-invert);
   border: none;
@@ -253,7 +255,8 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   margin-top: 8px;
   transition: filter 0.15s;
 }
-.auth-card button[type="submit"]:hover { filter: brightness(1.08); }
+.auth-card button[type="submit"]:hover,
+.auth-card .btn-primary:hover { filter: brightness(1.08); }
 
 .link-button {
   background: none;
@@ -273,6 +276,32 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   font-size: 14px;
 }
 
+/* ── Pantallas de éxito dentro de auth-card (email enviado, etc.) ── */
+.auth-card-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--status-dim);
+  border: 1px solid var(--status-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin: 0 auto 4px;
+}
+.auth-card-icon.success {
+  background: var(--status-dim);
+  border-color: var(--status-border);
+}
+.auth-card p {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+.auth-card p strong {
+  color: var(--text);
+}
 
 .admin-new-table-btn {
   width: 100%;

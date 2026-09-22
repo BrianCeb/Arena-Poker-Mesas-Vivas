@@ -100,8 +100,12 @@ router.get(
         where: {
           status: "ACTIVA",
           OR: [
-            { firstName: { contains: q, mode: "insensitive" } },
-            { lastName: { contains: q, mode: "insensitive" } },
+            // Sin "mode: insensitive": es una opción específica de Postgres
+            // que Prisma no acepta contra MySQL/MariaDB — ahí la
+            // insensibilidad a mayúsculas la da la collation de la columna
+            // (utf8mb4_unicode_ci), no un parámetro de la query.
+            { firstName: { contains: q } },
+            { lastName: { contains: q } },
             { documentNumber: { contains: q } },
           ],
         },
@@ -135,11 +139,13 @@ router.get(
 
       const users = await prisma.user.findMany({
         where: {
+          // Mismo motivo que en /search: sin "mode: insensitive", la
+          // collation de la columna en MySQL/MariaDB ya resuelve esto.
           OR: [
-            { firstName: { contains: q, mode: "insensitive" } },
-            { lastName: { contains: q, mode: "insensitive" } },
+            { firstName: { contains: q } },
+            { lastName: { contains: q } },
             { documentNumber: { contains: q } },
-            { email: { contains: q, mode: "insensitive" } },
+            { email: { contains: q } },
           ],
         },
         select: ADMIN_USER_SELECT,

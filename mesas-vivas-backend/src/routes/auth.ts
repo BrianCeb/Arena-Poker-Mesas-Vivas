@@ -12,10 +12,16 @@ import {
 } from "../services/authService";
 import { requireAuth } from "../middleware/auth";
 import { authLimiter } from "../middleware/rateLimiter";
+import { verifyCaptcha } from "../middleware/captcha";
 
 const router = Router();
 
-router.post("/register", authLimiter, async (req, res) => {
+// Captcha (Cloudflare Turnstile) en los 3 formularios públicos que un bot
+// podría abusar: registro, login y pedido de reset de contraseña. No se
+// agrega en /reset-password (confirmar la nueva contraseña) porque para
+// llegar ahí ya hace falta un token de un solo uso mandado por email —
+// no tiene sentido pedir captcha además de eso.
+router.post("/register", authLimiter, verifyCaptcha, async (req, res) => {
   try {
     const result = await registerUser(req.body);
     res.status(201).json(result);
@@ -74,7 +80,7 @@ router.post("/verify-email", async (req, res) => {
   }
 });
 
-router.post("/login", authLimiter, async (req, res) => {
+router.post("/login", authLimiter, verifyCaptcha, async (req, res) => {
   try {
     const { email, password } = req.body;
     const result = await loginUser(email, password, {
@@ -116,7 +122,7 @@ router.post("/logout", async (req, res) => {
   }
 });
 
-router.post("/forgot-password", authLimiter, async (req, res) => {
+router.post("/forgot-password", authLimiter, verifyCaptcha, async (req, res) => {
   try {
     const { email } = req.body;
     const result = await requestPasswordReset(email);
@@ -179,7 +185,8 @@ router.post("/reset-password", async (req, res) => {
 // acá el usuario ya está autenticado y confirma con su contraseña actual).
 // Lleva el mismo limiter que login: aunque haga falta estar autenticado,
 // frena a alguien que consiguió un token y prueba contraseñas actuales
-// a fuerza bruta para adivinarla.
+// a fuerza bruta para adivinarla. Sin captcha: ya está autenticado, no es
+// una superficie que un bot anónimo pueda abusar.
 router.post("/change-password", authLimiter, requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword, confirmNewPassword } = req.body;

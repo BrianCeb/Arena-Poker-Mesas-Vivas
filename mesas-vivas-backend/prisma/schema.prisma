@@ -2,13 +2,43 @@
 // Mesas Vivas — Schema de base de datos
 // Traducción directa del modelo acordado en el diseño previo.
 // ─────────────────────────────────────────────────────────────
+//
+// MIGRACIÓN A MYSQL/MARIADB (21/9): cambiado el provider de postgresql a
+// mysql.
+//
+// RESUELTO (22/9): las 3 restricciones de unicidad que en Postgres vivían
+// como índices únicos PARCIALES (con WHERE) — algo que MySQL/MariaDB no
+// soporta — están implementadas con una columna que vale NULL cuando la
+// fila no está "activa", con un índice único sobre esa columna.
+// MySQL/MariaDB tratan cada NULL como distinto, mismo efecto que el
+// WHERE parcial de Postgres. Dos de las tres usan columnas GENERATED
+// ALWAYS AS ... STORED; la de waiting_list_entries.active_per_table_key
+// usa en cambio un TRIGGER (BEFORE INSERT/UPDATE) porque involucra
+// `table_id`, que es una foreign key — MySQL/MariaDB no permiten que una
+// columna generada referencie una columna con FK. Viven en la migración
+// `mysql_partial_unique_workaround` (SQL manual, no generado por Prisma)
+// y NO están modeladas acá abajo como columnas del modelo — Prisma no
+// tiene soporte de primera clase para columnas generadas ni triggers en
+// MySQL. La app nunca las toca directamente, solo existen para que la
+// base rechace inserts/updates inconsistentes (Prisma lo reporta como
+// P2002, igual que con los índices parciales de Postgres):
+//   - casino_tables.name_active (índice: casino_tables_name_active_unique)
+//   - waiting_list_entries.active_per_table_key (vía trigger)
+//     (índice: waiting_list_entries_active_per_table_unique)
+//   - waiting_list_entries.seated_key
+//     (índice: waiting_list_entries_seated_unique)
+//
+// IMPORTANTE: por esto mismo, nunca correr `prisma db push` contra esta
+// base — compararía el schema.prisma (que no conoce estas columnas)
+// contra la base real y las borraría pensando que son drift. Usar
+// siempre `prisma migrate dev` / `prisma migrate deploy`.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -192,11 +222,19 @@ model CasinoTable {
   updatedAt          DateTime    @updatedAt @map("updated_at")
   deletedAt          DateTime?   @map("deleted_at")
 
+  // Columna generada por la base (no por Prisma) para el workaround de
+  // MySQL de índice único parcial — ver la nota grande al principio de
+  // este archivo. Unsupported() le dice a Prisma "esta columna existe,
+  // no la borres", pero no genera ningún campo utilizable en el cliente
+  // — la app nunca la lee ni la escribe directamente.
+  nameActive         Unsupported("varchar(191)")? @map("name_active")
+
   creator            User @relation("TableCreatedBy", fields: [createdBy], references: [id])
   waitingListEntries WaitingListEntry[]
   statusHistory      TableStatusHistory[]
 
   @@index([status])
+  @@unique([nameActive], map: "casino_tables_name_active_unique")
   @@map("casino_tables")
 }
 
@@ -220,10 +258,9 @@ model TableStatusHistory {
 // NOTA: las restricciones de unicidad ("un jugador no puede tener
 // dos inscripciones activas en la MISMA mesa" y "no puede estar
 // SENTADO en más de una mesa a la vez") NO se pueden expresar como
-// @@unique condicional en Prisma. Se agregan como índices únicos
-// parciales en una migración SQL manual, identificando a la
-// persona por documento (no por userId) para que también cubran
-// a los walk-ins sin cuenta.
+// @@unique condicional en Prisma. Implementadas vía columnas
+// generadas en una migración SQL manual — ver nota de MIGRACIÓN A
+// MYSQL al principio de este archivo.
 
 model WaitingListEntry {
   id             String            @id @default(uuid())
@@ -243,6 +280,13 @@ model WaitingListEntry {
   cancelledBy    String?           @map("cancelled_by")
   cancelReason   String?           @map("cancel_reason")
 
+  // Columnas del workaround de MySQL de índice único parcial — ver la
+  // nota grande al principio de este archivo. Unsupported() le dice a
+  // Prisma "estas columnas existen, no las borres", pero no generan
+  // ningún campo utilizable en el cliente — la app nunca las toca.
+  activePerTableKey Unsupported("char(64)")? @map("active_per_table_key")
+  seatedKey         Unsupported("char(64)")? @map("seated_key")
+
   user            User?       @relation(fields: [userId], references: [id])
   table           CasinoTable @relation(fields: [tableId], references: [id])
   cancelledByUser User?       @relation("EntryCancelledBy", fields: [cancelledBy], references: [id])
@@ -250,6 +294,8 @@ model WaitingListEntry {
   @@index([tableId, status])
   @@index([userId, status])
   @@index([documentType, documentNumber])
+  @@unique([activePerTableKey], map: "waiting_list_entries_active_per_table_unique")
+  @@unique([seatedKey], map: "waiting_list_entries_seated_unique")
   @@map("waiting_list_entries")
 }
 
