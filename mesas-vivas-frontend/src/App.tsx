@@ -17,14 +17,17 @@ interface Table {
   capacity: number;
   minPlayersToStart: number;
   status: "CERRADA" | "ABIERTA" | "SUSPENDIDA";
+  stradleMode: "NO" | "OPCIONAL" | "OBLIGATORIO";
+  stradleAmount: number | null;
   seated: number;
   waiting: number;
+  waitingPresent: number;
 }
 
 interface MyEntry {
   id: string;
   tableId: string;
-  status: "ANOTADO" | "SENTADO";
+  status: "ANOTADO" | "PRESENTE" | "SENTADO";
   table: Table;
 }
 
@@ -33,6 +36,15 @@ function tableStatusInfo(t: Table) {
   if (t.seated >= t.capacity) return { label: "Completa", cls: "badge-full" };
   if (t.seated < t.minPlayersToStart) return { label: "Armando mesa", cls: "badge-starting" };
   return { label: "En juego", cls: "badge-open" };
+}
+
+// Ciegas + stradle en un solo renglón (sm / bb / str) en vez de un stat
+// aparte — más compacto y es el formato que se usa en la jerga de mesa.
+// En NO no se agrega el tercer valor.
+function blindsText(t: Table): string {
+  const base = `$${t.smallBlind} / $${t.bigBlind}`;
+  if (t.stradleMode === "NO" || t.stradleAmount == null) return base;
+  return `${base} / $${t.stradleAmount}`;
 }
 
 export default function App() {
@@ -367,17 +379,19 @@ export default function App() {
                         {entry.table.name} — ${entry.table.smallBlind} / ${entry.table.bigBlind}
                       </div>
                       <div className="my-entry-detail">
-                        {entry.status === "SENTADO" ? "Sentado en esta mesa" : "Anotado, en espera"}
+                        {entry.status === "SENTADO"
+                          ? "Sentado en esta mesa"
+                          : entry.status === "PRESENTE"
+                            ? "Anotado, presente en el casino"
+                            : "Anotado, en espera"}
                       </div>
-                      {entry.status === "SENTADO" ? (
+                      {entry.status === "SENTADO" && (
                         <div className="my-entry-seated-note">
                           Estás jugando en esta mesa. Para dejarla, avisale al personal del casino.
                         </div>
-                      ) : (
-                        <button className="btn-leave" onClick={() => handleLeave(entry.tableId)}>
-                          Retirarme de la lista
-                        </button>
                       )}
+                      {/* El botón de retirarse vive ahora en la card de la
+                          mesa, más abajo — acá solo mostramos el estado. */}
                     </div>
                   ))}
                 </div>
@@ -393,6 +407,9 @@ export default function App() {
             const pct = Math.round((t.seated / t.capacity) * 100);
             const myEntryHere = myEntries.find((e) => e.tableId === t.id);
             const canJoin = t.status === "ABIERTA" && !myEntryHere;
+            // Desglose: cuántos están anotados pero todavía no llegaron
+            // vs. cuántos ya están presentes en el casino.
+            const waitingOnly = t.waiting - t.waitingPresent;
             return (
               <div className="table-card" key={t.id}>
                 <div className="table-card-top">
@@ -405,7 +422,7 @@ export default function App() {
                 <div className="blinds-row">
                   <div className="stat">
                     <div className="stat-label">Ciegas</div>
-                    <div className="stat-value">${t.smallBlind} / ${t.bigBlind}</div>
+                    <div className="stat-value">{blindsText(t)}</div>
                   </div>
                 </div>
                 <div className="occupancy-row">
@@ -414,24 +431,39 @@ export default function App() {
                   </div>
                   <div className="occupancy-text">{t.seated} / {t.capacity} sentados</div>
                 </div>
-                {t.waiting > 0 && (
-                  <div className="waiting-text">{t.waiting} persona{t.waiting === 1 ? "" : "s"} en espera</div>
+                {waitingOnly > 0 && (
+                  <div className="waiting-text">
+                    {waitingOnly} anotado{waitingOnly === 1 ? "" : "s"}
+                  </div>
                 )}
-                <button
-                  className="btn-join"
-                  disabled={!canJoin && !myEntryHere && loggedIn}
-                  onClick={() => handleJoin(t.id)}
-                >
-                  {!loggedIn
-                    ? "Iniciar sesión para anotarse"
-                    : myEntryHere
-                      ? myEntryHere.status === "SENTADO"
-                        ? "Ya estás sentado acá"
-                        : "Ya estás anotado acá"
-                      : t.status !== "ABIERTA"
-                        ? "Mesa cerrada"
-                        : "Anotarse en lista"}
-                </button>
+                {t.waitingPresent > 0 && (
+                  <div className="waiting-text waiting-text-presente">
+                    {t.waitingPresent} presente{t.waitingPresent === 1 ? "" : "s"} en el casino
+                  </div>
+                )}
+                {!loggedIn ? (
+                  <button className="btn-join" onClick={() => handleJoin(t.id)}>
+                    Iniciar sesión para anotarse
+                  </button>
+                ) : myEntryHere ? (
+                  myEntryHere.status === "SENTADO" ? (
+                    <button className="btn-join" disabled>
+                      Ya estás sentado acá
+                    </button>
+                  ) : (
+                    <button className="btn-leave btn-leave-card" onClick={() => handleLeave(t.id)}>
+                      Retirarme de la lista
+                    </button>
+                  )
+                ) : (
+                  <button
+                    className="btn-join"
+                    disabled={!canJoin}
+                    onClick={() => handleJoin(t.id)}
+                  >
+                    {t.status !== "ABIERTA" ? "Mesa cerrada" : "Anotarse en lista"}
+                  </button>
+                )}
               </div>
             );
           })}

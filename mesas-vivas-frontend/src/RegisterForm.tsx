@@ -40,6 +40,7 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +95,7 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
         confirmPassword,
         birthDate,
         acceptedTerms,
+        marketingConsent,
         captchaToken: captchaToken!,
       });
       setSuccess(true);
@@ -218,7 +220,19 @@ export default function RegisterForm({ onBackToLogin, onClose }: Props) {
           checked={acceptedTerms}
           onChange={(e) => setAcceptedTerms(e.target.checked)}
         />
-        Acepto los términos y condiciones
+        Acepto los{" "}
+        <a href={import.meta.env.VITE_TERMS_URL || "#"} target="_blank" rel="noopener noreferrer">
+          términos y condiciones
+        </a>
+      </label>
+
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={marketingConsent}
+          onChange={(e) => setMarketingConsent(e.target.checked)}
+        />
+        Quiero recibir novedades sobre próximos eventos y torneos
       </label>
 
       <Turnstile onToken={setCaptchaToken} />

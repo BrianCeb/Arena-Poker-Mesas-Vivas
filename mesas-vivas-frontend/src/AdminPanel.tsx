@@ -31,6 +31,7 @@ interface Entry {
   lastName: string;
   documentNumber: string;
   origin: "APP" | "MANUAL_STAFF";
+  status: "ANOTADO" | "PRESENTE" | "SENTADO";
   createdAt: string;
 }
 
@@ -80,6 +81,10 @@ export default function AdminPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [rowTableChoice, setRowTableChoice] = useState<Record<string, string>>({});
+  // Estado elegido para "Agregar a lista" de un usuario ya registrado
+  // (ANOTADO o PRESENTE) — por fila, para poder buscar y agregar a
+  // varias personas sin que se pisen entre sí. Default ANOTADO.
+  const [rowStatusChoice, setRowStatusChoice] = useState<Record<string, "ANOTADO" | "PRESENTE">>({});
   const [toast, setToast] = useState("");
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [guestForm, setGuestForm] = useState(EMPTY_GUEST_FORM);
@@ -176,6 +181,18 @@ export default function AdminPanel() {
     }
   }
 
+  // Marca a alguien ANOTADO como PRESENTE (ya está físicamente en el
+  // casino). Solo informativo — no cambia el orden de la cola.
+  async function handleMarkPresent(entry: Entry) {
+    try {
+      await api.markPresent(entry.id);
+      showToast(`${entry.firstName} ${entry.lastName} marcado como presente.`);
+      refreshAll();
+    } catch (err: any) {
+      showToast(err.message);
+    }
+  }
+
   async function handleRemove(entry: Entry) {
     try {
       await api.removeEntry(entry.id);
@@ -229,6 +246,24 @@ export default function AdminPanel() {
     }
   }
 
+  // Agrega a la lista de espera (sin sentar) a alguien que YA tiene
+  // cuenta pero nunca se anotó desde la app. El staff elige si queda
+  // ANOTADO (todavía no llegó) o PRESENTE (ya está ahí).
+  async function handleAddToWaitingList(user: SearchResult, tableId: string, status: "ANOTADO" | "PRESENTE") {
+    try {
+      await api.addToWaitingList(tableId, user.id, status);
+      const targetTable = tables.find((t) => t.id === tableId);
+      showToast(
+        `${user.firstName} ${user.lastName} agregado a la lista de ${targetTable?.name} (${status === "PRESENTE" ? "presente" : "anotado"}).`
+      );
+      setSearchQuery("");
+      setSearchResults([]);
+      refreshAll();
+    } catch (err: any) {
+      showToast(err.message);
+    }
+  }
+
   function setGuestField(key: keyof typeof EMPTY_GUEST_FORM, value: string) {
     setGuestForm((f) => ({ ...f, [key]: value }));
   }
@@ -249,6 +284,36 @@ export default function AdminPanel() {
       const targetTable = tables.find((t) => t.id === tableId);
       showToast(`${guestForm.firstName} ${guestForm.lastName} sentado en ${targetTable?.name} (invitado, sin cuenta).`);
       if (result?.warning) window.alert(result.warning);
+      setGuestForm(EMPTY_GUEST_FORM);
+      setGuestTableChoice("");
+      setSearchQuery("");
+      setSearchResults([]);
+      refreshAll();
+    } catch (err: any) {
+      showToast(err.message);
+    } finally {
+      setGuestSaving(false);
+    }
+  }
+
+  // Igual que "Sentar invitado" pero agrega a la lista de espera en vez
+  // de sentar directo. Siempre queda en PRESENTE — si el staff lo está
+  // cargando a mano es porque la persona está ahí en ese momento.
+  async function handleAddGuestToWaitingList() {
+    const tableId = guestTableChoice || selectedId || tables[0]?.id || "";
+    if (!tableId) {
+      showToast("No hay ninguna mesa disponible.");
+      return;
+    }
+    if (!guestForm.documentNumber.trim() || !guestForm.firstName.trim() || !guestForm.lastName.trim()) {
+      showToast("Completá documento, nombre y apellido.");
+      return;
+    }
+    setGuestSaving(true);
+    try {
+      await api.addWalkinGuestToWaitingList(tableId, guestForm);
+      const targetTable = tables.find((t) => t.id === tableId);
+      showToast(`${guestForm.firstName} ${guestForm.lastName} agregado a la lista de ${targetTable?.name} (presente).`);
       setGuestForm(EMPTY_GUEST_FORM);
       setGuestTableChoice("");
       setSearchQuery("");
@@ -407,17 +472,29 @@ export default function AdminPanel() {
               {waiting.map((e) => (
                 <div className="admin-entry-row" key={e.id}>
                   <div>
-                    <div className="admin-entry-name">{e.firstName} {e.lastName}</div>
+                    <div className="admin-entry-name">
+                      {e.firstName} {e.lastName}
+                      {e.status === "PRESENTE" && (
+                        <span className="admin-user-status status-activa" style={{ marginLeft: 8 }}>
+                          Presente
+                        </span>
+                      )}
+                    </div>
                     <div className="admin-entry-sub">DNI {e.documentNumber}</div>
                   </div>
                   <div className="admin-entry-actions">
+                    {e.status === "ANOTADO" && (
+                      <button className="admin-action-btn" onClick={() => handleMarkPresent(e)}>
+                        Marcar presente
+                      </button>
+                    )}
                     <button className="admin-action-btn accent" onClick={() => handleSeat(e)}>Sentar</button>
                     <button className="admin-action-btn danger" onClick={() => handleRemove(e)}>Quitar</button>
                   </div>
                 </div>
               ))}
 
-              <div className="admin-section-title">Sentar jugador presente (sin lista)</div>
+              <div className="admin-section-title">Buscar jugador con cuenta</div>
               <input
                 className="admin-search-input"
                 type="text"
@@ -427,6 +504,7 @@ export default function AdminPanel() {
               />
               {searchResults.map((u) => {
                 const chosenTableId = rowTableChoice[u.id] ?? selectedId ?? tables[0]?.id ?? "";
+                const chosenStatus = rowStatusChoice[u.id] ?? "ANOTADO";
                 return (
                   <div className="admin-entry-row admin-walkin-row" key={u.id}>
                     <div>
@@ -450,6 +528,29 @@ export default function AdminPanel() {
                         onClick={() => handleSeatWalkin(u, chosenTableId)}
                       >
                         Sentar
+                      </button>
+                    </div>
+                    <div className="admin-walkin-actions">
+                      {/* Estado inicial para "Agregar a lista" — no aplica
+                          a "Sentar" (siempre sienta directo). */}
+                      <select
+                        className="admin-walkin-select"
+                        value={chosenStatus}
+                        onChange={(e) =>
+                          setRowStatusChoice((prev) => ({
+                            ...prev,
+                            [u.id]: e.target.value as "ANOTADO" | "PRESENTE",
+                          }))
+                        }
+                      >
+                        <option value="ANOTADO">Anotado (todavía no llegó)</option>
+                        <option value="PRESENTE">Presente (ya está acá)</option>
+                      </select>
+                      <button
+                        className="admin-action-btn"
+                        onClick={() => handleAddToWaitingList(u, chosenTableId, chosenStatus)}
+                      >
+                        Agregar a lista
                       </button>
                     </div>
                   </div>
@@ -513,6 +614,13 @@ export default function AdminPanel() {
                       disabled={guestSaving}
                     >
                       {guestSaving ? "Sentando..." : "Sentar invitado"}
+                    </button>
+                    <button
+                      className="admin-action-btn"
+                      onClick={handleAddGuestToWaitingList}
+                      disabled={guestSaving}
+                    >
+                      {guestSaving ? "Agregando..." : "Agregar a lista (presente)"}
                     </button>
                   </div>
                 </div>

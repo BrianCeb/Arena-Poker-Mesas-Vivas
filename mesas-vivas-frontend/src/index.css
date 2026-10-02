@@ -18,6 +18,11 @@
   --danger: var(--brand-red);
   --danger-dim: #3a1826;
   --danger-text: #ff8fa3;
+  /* Verde para el estado "En juego" — antes usaba el mismo violeta que
+     el resto de los estados informativos, y no se distinguía a simple
+     vista de una mesa recién armada. */
+  --success: #2ec976;
+  --success-dim: #16321f;
   --radius: 14px;
   --radius-sm: 9px;
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
@@ -52,23 +57,27 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 28px 24px;
+  padding: 32px 28px;
   width: 100%;
-  max-width: 340px;
+  /* Un poco más ancha que antes (340px) — así el formulario entero
+     acompaña mejor la proporción del widget de Cloudflare en vez de
+     que éste se vea "de más" al lado de inputs chicos. */
+  max-width: 380px;
   box-shadow: var(--shadow);
 }
 .login-title { font-size: 19px; font-weight: 700; margin-bottom: 18px; text-align: center; }
 .login-logo { display: block; width: 100%; max-width: 260px; margin: 0 auto 4px; }
 .login-subtitle { font-size: 13px; color: var(--text-dim); text-align: center; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 20px; }
 .login-input {
-  width: 100%; padding: 11px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
-  background: var(--surface-2); color: var(--text); font-size: 15px; margin-bottom: 10px;
+  width: 100%; padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-size: 16px; margin-bottom: 12px;
 }
 .login-input:focus { outline: none; border-color: var(--brand-purple); }
 .login-btn {
-  width: 100%; padding: 12px; border-radius: var(--radius-sm); border: none;
-  background: var(--brand-gradient); color: var(--text-invert); font-weight: 700; font-size: 15px; cursor: pointer;
+  width: 100%; padding: 14px; border-radius: var(--radius-sm); border: none;
+  background: var(--brand-gradient); color: var(--text-invert); font-weight: 700; font-size: 16px; cursor: pointer;
   transition: filter 0.15s, transform 0.05s;
+  margin-bottom: 14px;
 }
 .login-btn:hover { filter: brightness(1.08); }
 .login-btn:active { transform: scale(0.99); }
@@ -106,28 +115,56 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   transition: background 0.15s;
 }
 .btn-leave:hover { background: var(--danger-dim); }
+/* Mismo botón "Retirarme", pero usado directo en la card de mesa (no
+   dentro de "Mis inscripciones") — necesita el margen de los demás
+   botones de la card en vez del suyo propio. */
+.btn-leave-card { margin-top: 12px; padding: 12px; font-size: 15px; }
 .empty-state { font-size: 14px; color: var(--text-dim); padding: 14px 4px; }
 
 .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
 .table-card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
 .table-name { font-size: 17px; font-weight: 700; }
 .table-game { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
-.badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
-.badge-open { background: var(--status-dim); color: var(--status); }
+
+/* Punto de color a la izquierda del texto del badge, tomando siempre el
+   mismo color que el texto (currentColor) — así cualquier estado nuevo
+   que se agregue ya sale con su punto sin tener que tocar esta regla. */
+.badge {
+  font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.badge::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+/* "En juego" pasa a verde para distinguirse de un vistazo del resto de
+   los estados (antes compartía el violeta de --status). */
+.badge-open { background: var(--success-dim); color: var(--success); }
 .badge-starting { background: var(--warn-dim); color: var(--warn); }
 .badge-full { background: var(--surface-3); color: var(--text-dim); }
 .badge-closed { background: var(--surface-3); color: var(--text-dim); }
 
-.blinds-row { display: flex; gap: 18px; margin: 12px 0; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.blinds-row { display: flex; gap: 18px; margin: 12px 0; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .stat { flex: 1; }
 .stat-label { font-size: 12px; color: var(--text-dim); margin-bottom: 2px; }
 .stat-value { font-size: 15px; font-weight: 600; }
+/* Dato de stradle — mismo tamaño que las ciegas pero en el color de
+   advertencia para que se note que es una condición especial de la mesa. */
+.stat-value-stradle { color: var(--warn); font-size: 14px; }
 
 .occupancy-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .occupancy-bar { flex: 1; height: 6px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
 .occupancy-fill { height: 100%; background: var(--status); border-radius: 4px; transition: width 0.3s; }
 .occupancy-text { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
-.waiting-text { font-size: 13px; color: var(--warn); margin: 6px 0 12px; }
+.waiting-text { font-size: 13px; color: var(--warn); margin: 2px 0; }
+.waiting-text:last-of-type { margin-bottom: 12px; }
+/* "Presentes en el casino" se distingue de "anotados" con el mismo verde
+   que el estado "En juego" — refuerza que es gente ya en el lugar. */
+.waiting-text-presente { color: var(--success); }
 
 .btn-join { width: 100%; padding: 12px; border-radius: var(--radius-sm); border: none; background: var(--brand-gradient); color: var(--text-invert); font-weight: 700; font-size: 15px; margin-top: 12px; cursor: pointer; transition: filter 0.15s, transform 0.05s; }
 .btn-join:hover:not(:disabled) { filter: brightness(1.08); }
@@ -207,12 +244,12 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
 
 .auth-card input,
 .auth-card select {
-  padding: 10px 12px;
+  padding: 13px 14px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px;
   width: 100%;
 }
 .auth-card input:focus,
@@ -242,15 +279,26 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   width: auto;
 }
 
+/* widget de Cloudflare Turnstile  */
+.turnstile-wrapper {
+  overflow: hidden;
+  width: 100%;
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+.turnstile-wrapper iframe {
+  display: block;
+}
+
 .auth-card button[type="submit"],
 .auth-card .btn-primary {
   background: var(--brand-gradient);
   color: var(--text-invert);
   border: none;
-  padding: 12px;
+  padding: 14px;
   border-radius: 8px;
   font-weight: bold;
-  font-size: 15px;
+  font-size: 16px;
   cursor: pointer;
   margin-top: 8px;
   transition: filter 0.15s;
@@ -749,6 +797,7 @@ main { padding: 16px; max-width: 480px; margin: 0 auto; }
   --warn-dim: #fdf1de;
   --danger-dim: #fde3e9;
   --danger-text: var(--brand-red);
+  --success-dim: #e3f7ec;
   --shadow: 0 2px 10px rgba(30, 20, 40, 0.08);
 }
 

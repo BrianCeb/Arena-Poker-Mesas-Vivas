@@ -32,6 +32,13 @@
 // base — compararía el schema.prisma (que no conoce estas columnas)
 // contra la base real y las borraría pensando que son drift. Usar
 // siempre `prisma migrate dev` / `prisma migrate deploy`.
+//
+// (28/9) Agregado el estado PRESENTE a WaitingListStatus — ver la
+// migración `add_marketing_consent_and_presente_status`. IMPORTANTE: esa
+// migración también actualiza a mano los triggers de
+// active_per_table_key para que reconozcan 'PRESENTE' como estado
+// "activo" — si se vuelve a tocar ese trigger en el futuro, no olvidar
+// incluir los 3 estados (ANOTADO, PRESENTE, SENTADO).
 
 generator client {
   provider = "prisma-client-js"
@@ -77,6 +84,7 @@ enum WaitingListOrigin {
 
 enum WaitingListStatus {
   ANOTADO
+  PRESENTE
   SENTADO
   RETIRADO
   CANCELADO_ADMIN
@@ -107,6 +115,7 @@ model User {
   status              UserStatus @default(PENDIENTE)
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
+  marketingConsent    Boolean   @default(false) @map("marketing_consent")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 

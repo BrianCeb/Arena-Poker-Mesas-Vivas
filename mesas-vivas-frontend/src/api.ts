@@ -133,6 +133,7 @@ export interface RegisterInput {
   confirmPassword: string;
   birthDate: string;
   acceptedTerms: boolean;
+  marketingConsent: boolean;
   captchaToken: string;
 }
 
@@ -275,6 +276,10 @@ export const api = {
   getTableEntries: (tableId: string) => request(`/waiting-list/tables/${tableId}/entries`),
   seatFromWaiting: (entryId: string) =>
     request(`/waiting-list/${entryId}/seat`, { method: "PATCH" }),
+  // Marca una entrada ANOTADO como PRESENTE (jugador ya está en el
+  // casino). Solo staff; es informativo, no cambia el orden de la cola.
+  markPresent: (entryId: string) =>
+    request(`/waiting-list/${entryId}/present`, { method: "PATCH" }),
   removeEntry: (entryId: string, reason?: string, cashOutAmount?: number) =>
     request(`/waiting-list/${entryId}`, {
       method: "DELETE",
@@ -288,6 +293,21 @@ export const api = {
     }),
   seatWalkinGuest: (tableId: string, guest: GuestInput) =>
     request(`/waiting-list/tables/${tableId}/seat-walkin-guest`, {
+      method: "POST",
+      body: JSON.stringify(guest),
+    }),
+  // Agrega a la lista de espera (sin sentar) a un usuario ya registrado
+  // que nunca se anotó desde la app. `status` es "ANOTADO" o "PRESENTE",
+  // a elección del staff.
+  addToWaitingList: (tableId: string, userId: string, status: "ANOTADO" | "PRESENTE") =>
+    request(`/waiting-list/tables/${tableId}/add`, {
+      method: "POST",
+      body: JSON.stringify({ userId, status }),
+    }),
+  // Igual que seatWalkinGuest pero agrega a la lista de espera (no
+  // sienta). Siempre queda en PRESENTE, fijo — no se elige estado.
+  addWalkinGuestToWaitingList: (tableId: string, guest: GuestInput) =>
+    request(`/waiting-list/tables/${tableId}/add-guest`, {
       method: "POST",
       body: JSON.stringify(guest),
     }),

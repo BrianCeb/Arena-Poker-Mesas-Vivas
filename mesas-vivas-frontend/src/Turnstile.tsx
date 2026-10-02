@@ -70,6 +70,15 @@ export default function Turnstile({ onToken }: Props) {
         if (cancelled || !containerRef.current || !window.turnstile) return;
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: SITE_KEY,
+          // Toma el tema actual de la app (el mismo data-theme que setea
+          // App.tsx en <html>) en vez de "auto" — "auto" sigue el sistema
+          // operativo del usuario, que puede no coincidir con el toggle
+          // ☀️/🌙 manual de la app.
+          theme: (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark",
+          // "flexible" ajusta el widget al ancho del contenedor en vez de
+          // un tamaño fijo grande — antes se veía desproporcionado en la
+          // card de login/registro.
+          size: "flexible",
           callback: (token: string) => onToken(token),
           "expired-callback": () => onToken(null),
           "error-callback": () => {

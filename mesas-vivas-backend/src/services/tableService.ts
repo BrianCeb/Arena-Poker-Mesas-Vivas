@@ -14,11 +14,20 @@ export async function listTables() {
   // "completa"/"armando mesa" son de presentación, no estado persistido).
   const withCounts = await Promise.all(
     tables.map(async (t) => {
-      const [seated, waiting] = await Promise.all([
+      const [seated, waiting, waitingPresent] = await Promise.all([
         prisma.waitingListEntry.count({ where: { tableId: t.id, status: "SENTADO" } }),
-        prisma.waitingListEntry.count({ where: { tableId: t.id, status: "ANOTADO" } }),
+        // Incluye PRESENTE: alguien ya marcado presente sigue "esperando"
+        // (todavía no está sentado), así que cuenta para este número.
+        prisma.waitingListEntry.count({
+          where: { tableId: t.id, status: { in: ["ANOTADO", "PRESENTE"] } },
+        }),
+        // Desglose: cuántos de los que esperan ya están físicamente en el
+        // casino (PRESENTE) — se muestra aparte en la card pública para
+        // que el jugador sepa si la cola es "real" o gente que todavía
+        // no llegó.
+        prisma.waitingListEntry.count({ where: { tableId: t.id, status: "PRESENTE" } }),
       ]);
-      return { ...t, seated, waiting };
+      return { ...t, seated, waiting, waitingPresent };
     })
   );
 
@@ -155,8 +164,11 @@ export async function deleteTable(tableId: string, actorId: string) {
     throw new AppError(404, "Mesa no encontrada.");
   }
 
+  // Incluye PRESENTE: alguien marcado presente sigue siendo una
+  // inscripción activa — no tendría sentido dar de baja la mesa con esa
+  // persona todavía en la lista.
   const activeCount = await prisma.waitingListEntry.count({
-    where: { tableId, status: { in: ["ANOTADO", "SENTADO"] } },
+    where: { tableId, status: { in: ["ANOTADO", "PRESENTE", "SENTADO"] } },
   });
   if (activeCount > 0) {
     throw new AppError(

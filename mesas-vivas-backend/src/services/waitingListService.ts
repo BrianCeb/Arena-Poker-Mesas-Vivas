@@ -62,8 +62,10 @@ export async function joinWaitingList(tableId: string, userId: string) {
   // real la da el índice único parcial de la base — ver el catch de
   // P2002 más abajo, que cubre el caso de que dos requests casi
   // simultáneas pasen este chequeo a la vez (doble click, dos pestañas).
+  // Incluye PRESENTE: alguien ya marcado presente también cuenta como
+  // inscripción activa acá.
   const existingActiveHere = await prisma.waitingListEntry.findFirst({
-    where: { userId, tableId, status: { in: ["ANOTADO", "SENTADO"] } },
+    where: { userId, tableId, status: { in: ["ANOTADO", "PRESENTE", "SENTADO"] } },
   });
   if (existingActiveHere) {
     throw new AppError(409, "Ya estás anotado en esta mesa.");
@@ -93,8 +95,11 @@ export async function joinWaitingList(tableId: string, userId: string) {
 }
 
 export async function leaveWaitingList(userId: string, tableId: string) {
+  // Incluye PRESENTE: retirarse vos mismo sigue permitido mientras no
+  // estés SENTADO (ver el chequeo de abajo), sin importar si ya te
+  // habían marcado presente o no.
   const entry = await prisma.waitingListEntry.findFirst({
-    where: { userId, tableId, status: { in: ["ANOTADO", "SENTADO"] } },
+    where: { userId, tableId, status: { in: ["ANOTADO", "PRESENTE", "SENTADO"] } },
   });
   if (!entry) {
     throw new AppError(404, "No tenés ninguna inscripción activa en esa mesa.");
@@ -120,7 +125,7 @@ export async function leaveWaitingList(userId: string, tableId: string) {
 
 export async function getMyEntries(userId: string) {
   const entries = await prisma.waitingListEntry.findMany({
-    where: { userId, status: { in: ["ANOTADO", "SENTADO"] } },
+    where: { userId, status: { in: ["ANOTADO", "PRESENTE", "SENTADO"] } },
     include: { table: true },
     orderBy: { createdAt: "asc" },
   });
@@ -129,7 +134,7 @@ export async function getMyEntries(userId: string) {
 
 export async function getTableEntries(tableId: string) {
   const entries = await prisma.waitingListEntry.findMany({
-    where: { tableId, status: { in: ["ANOTADO", "SENTADO"] } },
+    where: { tableId, status: { in: ["ANOTADO", "PRESENTE", "SENTADO"] } },
     include: {
       user: { select: { id: true, firstName: true, lastName: true, documentNumber: true } },
     },
@@ -138,18 +143,55 @@ export async function getTableEntries(tableId: string) {
 
   return {
     seated: entries.filter((e) => e.status === "SENTADO"),
-    waiting: entries.filter((e) => e.status === "ANOTADO"),
+    // ANOTADO y PRESENTE quedan juntos acá (todavía no están sentados);
+    // cada entrada trae su propio `status` para que el panel admin
+    // distinga cuál está físicamente en el lugar.
+    waiting: entries.filter((e) => e.status === "ANOTADO" || e.status === "PRESENTE"),
   };
 }
 
 // ── PERSONAL DEL CASINO ──────────────────────────────────────
+
+// Marca como "presente" a alguien que ya se había anotado desde la app
+// (estaba en ANOTADO). Solo lo hace el staff desde el panel — el jugador
+// no puede auto-marcarse presente. Es puramente informativo: no cambia
+// el orden de la cola, `seatFromWaitingList` sigue respetando el orden
+// de anotación de siempre.
+export async function markPresent(entryId: string, actorId: string) {
+  const entry = await prisma.waitingListEntry.findUnique({ where: { id: entryId } });
+  if (!entry || entry.status !== "ANOTADO") {
+    throw new AppError(404, "Inscripción no encontrada o no está en estado 'anotado'.");
+  }
+
+  await prisma.$transaction([
+    prisma.waitingListEntry.update({
+      where: { id: entryId },
+      data: { status: "PRESENTE" },
+    }),
+    prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "ENTRY_MARKED_PRESENT",
+        entityType: "WaitingListEntry",
+        entityId: entryId,
+        previousState: { status: "ANOTADO" },
+        newState: { status: "PRESENTE" },
+      },
+    }),
+  ]);
+
+  broadcastTablesChanged();
+  return { message: "Jugador marcado como presente." };
+}
 
 export async function seatFromWaitingList(entryId: string, actorId: string) {
   const entry = await prisma.waitingListEntry.findUnique({
     where: { id: entryId },
     include: { table: true },
   });
-  if (!entry || entry.status !== "ANOTADO") {
+  // Se puede sentar tanto a alguien ANOTADO como a alguien ya marcado
+  // PRESENTE — PRESENTE es solo informativo, no es un paso obligatorio.
+  if (!entry || !["ANOTADO", "PRESENTE"].includes(entry.status)) {
     throw new AppError(404, "Inscripción no encontrada o ya no está en espera.");
   }
 
@@ -231,13 +273,14 @@ export async function removeEntry(
   cashOutAmount?: number | null
 ) {
   const entry = await prisma.waitingListEntry.findUnique({ where: { id: entryId } });
-  if (!entry || !["ANOTADO", "SENTADO"].includes(entry.status)) {
+  if (!entry || !["ANOTADO", "PRESENTE", "SENTADO"].includes(entry.status)) {
     throw new AppError(404, "Inscripción no encontrada o ya no está activa.");
   }
 
   // El cash-out solo tiene sentido para alguien que estaba jugando
-  // (SENTADO). Para una entrada ANOTADO (todavía en espera) se ignora
-  // aunque venga en la request, para no guardar un monto sin sentido.
+  // (SENTADO). Para una entrada ANOTADO/PRESENTE (todavía en espera) se
+  // ignora aunque venga en la request, para no guardar un monto sin
+  // sentido.
   const isSeated = entry.status === "SENTADO";
 
   await prisma.$transaction([
@@ -288,7 +331,7 @@ export async function seatWalkin(tableId: string, targetUserId: string, actorId:
   }
 
   const existingActiveHere = await prisma.waitingListEntry.findFirst({
-    where: { userId: targetUserId, tableId, status: { in: ["ANOTADO", "SENTADO"] } },
+    where: { userId: targetUserId, tableId, status: { in: ["ANOTADO", "PRESENTE", "SENTADO"] } },
   });
   if (existingActiveHere) {
     throw new AppError(409, "Ese jugador ya tiene una inscripción activa en esta mesa.");
@@ -470,6 +513,150 @@ export async function seatWalkinGuest(
 
     broadcastTablesChanged();
     return { ...result, ...(warning ? { warning } : {}) };
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      throw new AppError(409, "Esa persona ya tiene una inscripción activa en esta mesa.");
+    }
+    throw err;
+  }
+}
+
+// El staff carga a la lista de espera a alguien que YA tiene cuenta pero
+// nunca se anotó desde la app — a diferencia de seatWalkin, esto NO lo
+// sienta directo, lo agrega a la cola. El staff elige el estado inicial:
+// ANOTADO (lo anota "en nombre de" alguien que todavía no llegó) o
+// PRESENTE (ya está ahí, esperando).
+export async function addToWaitingList(
+  tableId: string,
+  targetUserId: string,
+  initialStatus: "ANOTADO" | "PRESENTE",
+  actorId: string
+) {
+  if (!["ANOTADO", "PRESENTE"].includes(initialStatus)) {
+    throw new AppError(400, "Estado inicial inválido.");
+  }
+
+  const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+  if (!targetUser || targetUser.status !== "ACTIVA") {
+    throw new AppError(400, "El jugador no existe o su cuenta no está habilitada.");
+  }
+
+  const table = await prisma.casinoTable.findUnique({ where: { id: tableId } });
+  if (!table || table.deletedAt) {
+    throw new AppError(404, "Mesa no encontrada.");
+  }
+  if (table.status !== "ABIERTA") {
+    throw new AppError(409, "Esta mesa no está abierta en este momento.");
+  }
+
+  const existingActiveHere = await prisma.waitingListEntry.findFirst({
+    where: { userId: targetUserId, tableId, status: { in: ["ANOTADO", "PRESENTE", "SENTADO"] } },
+  });
+  if (existingActiveHere) {
+    throw new AppError(409, "Ese jugador ya tiene una inscripción activa en esta mesa.");
+  }
+
+  try {
+    const entry = await prisma.$transaction(async (tx) => {
+      const created = await tx.waitingListEntry.create({
+        data: {
+          userId: targetUserId,
+          tableId,
+          status: initialStatus,
+          origin: "MANUAL_STAFF",
+          documentType: targetUser.documentType,
+          documentNumber: targetUser.documentNumber,
+          firstName: targetUser.firstName,
+          lastName: targetUser.lastName,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          action: "ENTRY_ADDED_MANUALLY",
+          entityType: "WaitingListEntry",
+          entityId: created.id,
+          newState: { userId: targetUserId, tableId, tableName: table.name, status: initialStatus },
+        },
+      });
+      return created;
+    });
+
+    broadcastTablesChanged();
+    return entry;
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      throw new AppError(409, "Ese jugador ya tiene una inscripción activa en esta mesa.");
+    }
+    throw err;
+  }
+}
+
+// Igual que seatWalkinGuest, pero para alguien SIN cuenta que se agrega a
+// la lista de espera (no se sienta directo). Siempre entra en PRESENTE,
+// fijo, sin opción de elegir — decisión tomada: si el staff lo está
+// cargando a mano es porque la persona está ahí físicamente en ese
+// momento, no tendría sentido cargarla como ANOTADO.
+export async function addWalkinGuestToWaitingList(
+  tableId: string,
+  guest: { documentType: string; documentNumber: string; firstName: string; lastName: string },
+  actorId: string
+) {
+  const documentType = guest.documentType as any;
+  const documentNumber = (guest.documentNumber || "").trim();
+  const firstName = (guest.firstName || "").trim();
+  const lastName = (guest.lastName || "").trim();
+
+  if (!documentType || !documentNumber || !firstName || !lastName) {
+    throw new AppError(400, "Documento, nombre y apellido son obligatorios.");
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { documentType_documentNumber: { documentType, documentNumber } },
+  });
+  if (existingUser) {
+    throw new AppError(
+      409,
+      "Esta persona ya tiene una cuenta registrada. Buscala por nombre o DNI en vez de cargarla como invitado."
+    );
+  }
+
+  const table = await prisma.casinoTable.findUnique({ where: { id: tableId } });
+  if (!table || table.deletedAt) {
+    throw new AppError(404, "Mesa no encontrada.");
+  }
+  if (table.status !== "ABIERTA") {
+    throw new AppError(409, "Esta mesa no está abierta en este momento.");
+  }
+
+  try {
+    const entry = await prisma.$transaction(async (tx) => {
+      const created = await tx.waitingListEntry.create({
+        data: {
+          userId: null,
+          tableId,
+          status: "PRESENTE",
+          origin: "MANUAL_STAFF",
+          documentType,
+          documentNumber,
+          firstName,
+          lastName,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          action: "GUEST_ADDED_TO_WAITING_LIST",
+          entityType: "WaitingListEntry",
+          entityId: created.id,
+          newState: { documentType, documentNumber, firstName, lastName, tableId, tableName: table.name },
+        },
+      });
+      return created;
+    });
+
+    broadcastTablesChanged();
+    return entry;
   } catch (err: any) {
     if (err.code === "P2002") {
       throw new AppError(409, "Esa persona ya tiene una inscripción activa en esta mesa.");
